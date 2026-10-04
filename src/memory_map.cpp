@@ -1,0 +1,188 @@
+// The emulated memory map: every CPU read/write of RAM, IO registers, video regs, audio
+// regs, GPIO and DMA lands in memory_read16/memory_write16.
+
+#include "common.h"
+
+uint16_t memory_read16(uint32_t addr) {
+    if (addr < 0x2800) return ram[addr];
+    if (addr <= 0x28FF) return video_regs[addr - 0x2800];
+    if (addr <= 0x2FFF) return ram[addr];
+    if (addr <= 0x31FF) return audio_r(addr - 0x3000);
+    if (addr <= 0x33FF) return audio_phase_r(addr - 0x3200);
+    if (addr <= 0x341F) return audio_ctrl_regs[addr - 0x3400];
+    if (addr <= 0x3FFF) {
+        // Hardware PRNG
+        if (addr == 0x3D2C || addr == 0x3D2D) return (uint16_t)rand();
+
+        // ADC Data (Random Pet Colors) - ready bit + random low bits
+        if (addr == 0x3D27) return (uint16_t)((rand() & 0x0FFF) | 0x8000);
+
+        // REG_DATA_SEGMENT passthrough - see the DS-register bug note above.
+        if (addr == 0x3D2F) return cpu_ptr->get_ds();
+
+        // GPIO Port A Data (Inputs) - REG_IOA_DATA. Buttons are wired to
+        // Port A; bit index matches GameButton enum order by construction.
+        if (addr == 0x3D01) {
+            uint16_t val = io[addr - 0x3000];
+            uint16_t low = 0x0000; // active-high; default = nothing pressed
+            if (!g_mod_menu_open) { // don't let mod-menu navigation leak into the game
+                for (int b = 0; b < GAME_BUTTON_COUNT; b++) {
+                    if (IsKeyDown(g_key_binding[b])) low |= (1 << b);
+                }
+                // Native controller support: gamepad 0's D-pad and left
+                // stick both drive movement (whichever the player uses),
+                // face/start buttons map to Select/Back/Menu via each
+                // platform's own "confirm/cancel/start" convention - raylib
+                // normalizes Xbox-style (A/B/Start) and PlayStation-style
+                // (Cross/Circle/Start) pads to the same enum values, so this
+                // covers both without per-platform cases. Remappable via
+                // g_gamepad_binding (Controls menu, Gamepad column),
+                // persisted the same way as the keyboard bindings above.
+                if (IsGamepadAvailable(0)) {
+                    const float deadzone = 0.35f;
+                    float ax = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X);
+                    float ay = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y);
+                    for (int b = 0; b < GAME_BUTTON_COUNT; b++) {
+                        if (IsGamepadButtonDown(0, g_gamepad_binding[b])) low |= (1 << b);
+                    }
+                    if (ax < -deadzone) low |= (1 << BTN_LEFT);
+                    if (ax > deadzone) low |= (1 << BTN_RIGHT);
+                    if (ay < -deadzone) low |= (1 << BTN_UP);
+                    if (ay > deadzone) low |= (1 << BTN_DOWN);
+                }
+            }
+            if (g_selftest) low = selftest_buttons(g_frame);
+            // Opt-in auto test-menu unlock (F9) - synthesize the real
+            // button sequence instead of real input while active, timed off
+            // g_test_menu_seq_frame (advanced once per sim frame below).
+            if (g_test_menu_seq_active) {
+                int f = g_test_menu_seq_frame;
+                low = 0;
+                if (g_test_menu_chime_frame < 0) {
+                    // Chime hasn't fired yet - keep holding no matter how
+                    // long it takes (confirmed real threshold is ~182
+                    // frames, releasing early resets the test-mode flag).
+                    low = (1 << BTN_LEFT) | (1 << BTN_SELECT);
+                } else {
+                    int rel = f - g_test_menu_chime_frame;
+                    if (rel < 10) low = (1 << BTN_LEFT) | (1 << BTN_SELECT);
+                    else if (rel >= 16 && rel < 22) low = (1 << BTN_UP);
+                    else if (rel >= 28 && rel < 34) low = (1 << BTN_DOWN);
+                    else if (rel >= 40 && rel < 46) low = (1 << BTN_MENU);
+                    else if (rel >= 52 && rel < 58) low = (1 << BTN_BACK);
+                    else if (rel >= 64) g_test_menu_seq_active = false;
+                }
+            }
+            return (val & ~0x007F) | low;
+        }
+
+        // GPIO Port B (EEPROM DO on bit 3)
+        if (addr == 0x3D06) {
+            uint16_t val = io[addr - 0x3000];
+            return (val & ~0x0008) | (eeprom_do_read() ? 0x0008 : 0);
+        }
+
+        return io[addr - 0x3000];
+    }
+    if (addr < 0x400000) return rom[addr];
+    return 0;
+}
+
+void memory_write16(uint32_t addr, uint16_t data) {
+    if (addr < 0x2800) {
+        ram[addr] = data;
+    } else if (addr <= 0x28FF) {
+        if (addr == 0x2863) { video_regs[0x63] &= ~data; check_video_irq(); }
+        else if (addr == 0x2862) { video_regs[0x62] = data; check_video_irq(); }
+        else if (addr == 0x2872) {
+            video_regs[0x72] = data & 0x03FF;
+            uint16_t len = video_regs[0x72] ? video_regs[0x72] : 0x400;
+            uint32_t src = video_regs[0x70] & 0x3FFF;
+            uint32_t dst = video_regs[0x71] & 0x03FF;
+            for (uint32_t j = 0; j < len; j++) if (dst + j < 0x400) ram[0x2C00 + dst + j] = memory_read16(src + j);
+            video_regs[0x72] = 0;
+            if (video_regs[0x62] & 4) { video_regs[0x63] |= 4; check_video_irq(); }
+        } else {
+            video_regs[addr - 0x2800] = data;
+        }
+    } else if (addr <= 0x2FFF) {
+        ram[addr] = data;
+    } else if (addr <= 0x31FF) {
+        audio_w(addr - 0x3000, data);
+    } else if (addr <= 0x33FF) {
+        audio_phase_w(addr - 0x3200, data);
+    } else if (addr <= 0x341F) {
+        audio_ctrl_w(addr - 0x3400, data);
+    } else if (addr <= 0x3FFF) {
+        io[addr - 0x3000] = data;
+
+        // REG_DATA_SEGMENT passthrough - see the get_ds() read-side note
+        // above. Without wiring the write side too, ds:-prefixed extended
+        // addressing (room/tile/sprite bank select) never actually changes
+        // banks - caused invisible-wall collision bugs, pet-selector sprite
+        // snapping, and personality-screen icon misplacement, all from the
+        // same stale-DS root cause.
+        if (addr == 0x3D2F) cpu_ptr->set_ds(data & 0x3f);
+
+        // GPIO Port B: bit0=EEPROM CS, bit1=CLK, bit2=DI (bit3=DO is read-only)
+        if (addr == 0x3D06) {
+            eeprom_cs_write((data & 0x0001) != 0);
+            eeprom_clk_write((data & 0x0002) != 0);
+            eeprom_di_write((data & 0x0004) != 0);
+        }
+
+        // REG_SYSTEM_CTRL (0x3D20) bit15 / REG_WATCHDOG_CLEAR (0x3D24),
+        // ported from spg2xx_io_device's real watchdog: bit15 arms a
+        // 750ms countdown (750ms @ 60fps = 45 frames, matching this
+        // port's own SIM_DT granularity), writing 0x55AA to the clear
+        // register while armed reloads it, and letting it expire
+        // unfed asserts then clears INPUT_LINE_RESET - a genuine CPU
+        // reset. Ground-truthed live via a MAME watchpoint: real
+        // hardware's Quit flow arms the watchdog and deliberately stops
+        // feeding it, so after 750ms idle the CPU resets itself clean
+        // (landing at ResetVector, ROM 0x00fa72, which restores default
+        // RAM including GameState=0 and returns to the main menu) -
+        // this port never implemented these two registers at all, so
+        // the countdown never started and that reset never happened,
+        // which is the actual root cause of the Quit-freeze investigated
+        // during development. watchdog_enabled/watchdog_frames_left already
+        // existed as dead scaffolding for exactly this (decrement-and-
+        // reset logic already implemented in the main loop) - just never
+        // wired to a real trigger before now.
+        if (addr == 0x3D20) {
+            bool want_enabled = (data & 0x8000) != 0;
+            if (want_enabled && !watchdog_enabled) { watchdog_enabled = true; watchdog_frames_left = 45; }
+            else if (!want_enabled) { watchdog_enabled = false; watchdog_frames_left = 0; }
+        }
+        if (addr == 0x3D24 && data == 0x55AA && watchdog_enabled) {
+            watchdog_frames_left = 45;
+        }
+
+        // System DMA (ported from spg2xx_sysdma_device::do_cpu_dma, mame/src/
+        // devices/machine/spg2xx_sysdma.cpp): writing the word count (+ control
+        // bits in the top 2 bits) to 0x3E02 copies `len` words from a 22-bit
+        // source address (0x3E00 low / 0x3E01 high 6 bits) to a 14-bit
+        // destination window (0x3E03). Real hardware clears 0x3E02 AND advances
+        // the source/dest registers past the copied region when the transfer
+        // completes - a ROM doing several chained transfers (advancing src/dst
+        // itself between calls, or relying on this auto-advance) would silently
+        // re-read/re-write the same stale addresses every time without this,
+        // corrupting whatever data those chained transfers were assembling
+        // (plausible cause of the new-game spawn/stats corruption). The clear
+        // alone was also needed already, since the ROM's wait-for-DMA-complete
+        // poll loop spins forever on a 0x3E02 value that never resets.
+        if (addr == 0x3E02) {
+            uint32_t src = ((io[0x3E01 - 0x3000] & 0x3f) << 16) | io[0x3E00 - 0x3000];
+            uint32_t dst = io[0x3E03 - 0x3000] & 0x3fff;
+            uint32_t len = data & ~0xc000;
+            if (!(data & 0xc000)) {
+                for (uint32_t j = 0; j < len; j++) memory_write16((dst + j) & 0x3fff, memory_read16(src + j));
+                src += len;
+                io[0x3E00 - 0x3000] = (uint16_t)src;
+                io[0x3E01 - 0x3000] = (src >> 16) & 0x3f;
+                io[0x3E03 - 0x3000] = (dst + len) & 0x3fff;
+            }
+            io[0x3E02 - 0x3000] = 0;
+        }
+    }
+}

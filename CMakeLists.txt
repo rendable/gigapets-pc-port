@@ -16,6 +16,24 @@ FetchContent_MakeAvailable(raylib)
 
 set(SOURCES
     src/main.cpp
+    src/machine.cpp
+    src/memory_map.cpp
+    src/eeprom.cpp
+    src/audio.cpp
+    src/video.cpp
+    src/input.cpp
+    src/settings.cpp
+    src/ui.cpp
+    src/hud.cpp
+    src/window_util.cpp
+    src/rom_hooks.cpp
+    src/cheats.cpp
+    src/minipet.cpp
+    src/player_mods.cpp
+    src/mod_menu.cpp
+    src/quest_arrow.cpp
+    src/sprite_export.cpp
+    src/selftest.cpp
     src/unsp.cpp
     src/unsp_fxxx.cpp
     src/unsp_exxx.cpp
