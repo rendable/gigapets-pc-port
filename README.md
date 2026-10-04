@@ -31,8 +31,9 @@ Prefer to build it yourself? See [Building from source](#building-from-source) b
 | Key | Action |
 | --- | --- |
 | Arrow keys | Move / D-Pad |
-| Z, X, C | A, B, C buttons |
-| Enter | Start |
+| Z | Select |
+| X | Back / Cancel |
+| Enter | Menu |
 | Tab | Mod Menu |
 | F7 | Toggle live sprite capture |
 | F8 | Export visible sprites to `extracted_sprites/` as PNGs |
