@@ -377,10 +377,16 @@ static const char* APP_VERSION = "0.1.0";
 // Hand-declared instead of #include <windows.h> to avoid its Rectangle/
 // CloseWindow/DrawText/PlaySound clashes with raylib. user32.lib is already
 // linked (CMakeLists.txt); kernel32.lib is linked implicitly by default.
+struct WinRect { long left, top, right, bottom; };
+struct WinMonitorInfo { unsigned long cbSize; WinRect rcMonitor; WinRect rcWork; unsigned long dwFlags; };
 extern "C" {
     __declspec(dllimport) void* __stdcall GetConsoleWindow(void);
     __declspec(dllimport) int __stdcall ShowWindow(void* hWnd, int nCmdShow);
     __declspec(dllimport) int __stdcall MessageBoxA(void* hWnd, const char* text, const char* caption, unsigned type);
+    __declspec(dllimport) int __stdcall GetWindowRect(void* hWnd, struct WinRect* rect);
+    __declspec(dllimport) void* __stdcall MonitorFromWindow(void* hWnd, unsigned long flags);
+    __declspec(dllimport) int __stdcall GetMonitorInfoA(void* hMonitor, struct WinMonitorInfo* info);
+    __declspec(dllimport) int __stdcall MoveWindow(void* hWnd, int x, int y, int w, int h, int repaint);
 }
 #define SW_MINIMIZE 6
 
@@ -392,6 +398,39 @@ extern "C" {
 uint16_t memory_read16(uint32_t addr);
 static const int NATIVE_W = 320;
 static const int NATIVE_H = 240;
+
+// F11: grow the (still windowed) window to the largest whole-number multiple
+// of the native 320x240 that fits the current monitor's usable area, so the
+// picture stays pixel-sharp instead of being stretched. Press again to
+// restore the previous size/position.
+void toggle_expand_window() {
+    static bool saved_valid = false;
+    static WinRect saved = {0, 0, 0, 0};
+    void* hwnd = GetWindowHandle();
+    if (!hwnd) return;
+    if (IsWindowMaximized()) RestoreWindow();
+    WinRect outer;
+    if (!GetWindowRect(hwnd, &outer)) return;
+    int cw = GetScreenWidth(), ch = GetScreenHeight();
+    int deco_w = (int)(outer.right - outer.left) - cw;
+    int deco_h = (int)(outer.bottom - outer.top) - ch;
+    WinMonitorInfo mi = {};
+    mi.cbSize = sizeof(mi);
+    if (!GetMonitorInfoA(MonitorFromWindow(hwnd, 2 /* MONITOR_DEFAULTTONEAREST */), &mi)) return;
+    int work_w = (int)(mi.rcWork.right - mi.rcWork.left);
+    int work_h = (int)(mi.rcWork.bottom - mi.rcWork.top);
+    int scale = std::min((work_w - deco_w) / NATIVE_W, (work_h - deco_h) / NATIVE_H);
+    if (scale < 1) scale = 1;
+    int tw = NATIVE_W * scale + deco_w, th = NATIVE_H * scale + deco_h;
+    bool already_expanded = (cw == NATIVE_W * scale && ch == NATIVE_H * scale);
+    if (already_expanded && saved_valid) {
+        MoveWindow(hwnd, (int)saved.left, (int)saved.top, (int)(saved.right - saved.left), (int)(saved.bottom - saved.top), 1);
+        saved_valid = false;
+        return;
+    }
+    if (!already_expanded) { saved = outer; saved_valid = true; }
+    MoveWindow(hwnd, (int)mi.rcWork.left + (work_w - tw) / 2, (int)mi.rcWork.top + (work_h - th) / 2, tw, th, 1);
+}
 static const int WIDE_W = 320;
 static const int WIDE_MARGIN_L = (WIDE_W - NATIVE_W) / 2;
 static const int WIDE_MARGIN_R = (WIDE_W - NATIVE_W) - WIDE_MARGIN_L;
@@ -4427,7 +4466,7 @@ int main() {
         // so re-toggling begins a fresh session instead of silently
         // skipping objects already seen in a previous capture.
         static std::set<std::string> live_capture_exported;
-        if (IsKeyPressed(KEY_F11)) ToggleFullscreen();
+        if (IsKeyPressed(KEY_F11)) toggle_expand_window();
         if (IsKeyPressed(KEY_F7)) {
             g_live_sprite_capture = !g_live_sprite_capture;
             if (g_live_sprite_capture) {

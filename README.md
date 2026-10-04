@@ -26,7 +26,7 @@ Prefer to build it yourself? See [Building from source](#building-from-source) b
 | F7 | Toggle live sprite capture |
 | F8 | Export visible sprites to `extracted_sprites/` as PNGs |
 | F9 | Jump to the hidden hardware debug/test menu |
-| F11 | Toggle fullscreen |
+| F11 | Expand the window to the largest whole-number size that fits your screen (press again to restore) |
 
 Gamepads are supported; bind buttons in the Mod Menu.
 
