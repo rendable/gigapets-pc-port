@@ -106,9 +106,9 @@ void quest_arrow_draw() {
 // DOOR_LINKS table - no arrow shown if the target area isn't
 // directly reachable from here, or if already in the target area.
 if (g_quest_arrow_enabled) {
-    bool gate = ram[GAME_STATE_ADDR] == GAME_STATE_IN_ROOM && ram[0x1E4F] != 0xFFFF;
-    uint16_t pool_idx = ram[0x1E68];
-    uint16_t target_area = rom[0xDAEC + pool_idx * 16]; // real per-NPC area, lives in ROM not RAM
+    bool gate = ram[GAME_STATE_ADDR] == GAME_STATE_IN_ROOM && ram[QUEST_OBJECTIVE_FLAG_ADDR] != 0xFFFF;
+    uint16_t pool_idx = ram[QUEST_TARGET_POOL_IDX_ADDR];
+    uint16_t target_area = rom[ROM_NPC_AREA_TABLE + pool_idx * ROM_NPC_AREA_TABLE_STRIDE]; // real per-NPC area, lives in ROM not RAM
     uint16_t cur_area = ram[LOCATION_ID_ADDR];
     bool door_found = false;
     int16_t door_x = 0, door_y = 0;

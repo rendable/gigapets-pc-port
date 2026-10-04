@@ -118,3 +118,13 @@ static const uint16_t MINIPET_LINK_AVAILABLE_ADDR = 0x1b19;
 // table entry to begin with).
 static const uint32_t SHADOW_PATCH_ADDR = 0x01DEB5;
 static const uint16_t SHADOW_RETF_OPCODE = 0x9A90;
+
+// Save-routine plumbing (see cheats.cpp set_stat_value / set_inv_value).
+static const uint16_t CURRENT_SAVE_SLOT_ADDR = 0x1AFF;  // slot index the ROM's save routines expect as an argument
+static const uint16_t ITEM_QUANTITY_BASE_ADDR = 0x0C51; // item N's owned-quantity word lives at 0x0C51 + N (the ROM's item id)
+
+// Hidden test menu and quest tracking.
+static const uint16_t TEST_MENU_UNLOCK_FLAG_ADDR = 0x1A4E;  // nonzero = hardware test menu is reachable
+static const uint16_t ACTIVE_STORY_OBJECT_ID_ADDR = 0x1AA5; // nearby interactable's object id, 0xFFFF = none
+static const uint16_t QUEST_OBJECTIVE_FLAG_ADDR = 0x1E4F;   // 0xFFFF = no quest objective active
+static const uint16_t QUEST_TARGET_POOL_IDX_ADDR = 0x1E68;  // NPC pool index of the quest's delivery target

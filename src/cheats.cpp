@@ -112,7 +112,7 @@ void set_stat_value(int stat_idx, int32_t val) {
     if (val > CHEAT_STATS[stat_idx].max_val) val = CHEAT_STATS[stat_idx].max_val;
     ram[CHEAT_STATS[stat_idx].addr] = (uint16_t)val;
     if (CHEAT_STATS[stat_idx].addr == MONEY_STAT_ADDR) {
-        call_rom_function(0x02E4A8, { 0, ram[0x1AFF] });
+        call_rom_function(ROM_SAVE_MONEY_TO_SLOT, { 0, ram[CURRENT_SAVE_SLOT_ADDR] });
     }
     if (g_stat_frozen[stat_idx]) {
         g_stat_frozen_value[stat_idx] = (uint16_t)val;
@@ -164,7 +164,7 @@ void set_inv_value(int item_idx, int32_t new_val) {
     // early entries. Deriving the real ID from the address itself (which
     // is independently known-correct - it's what every existing read/
     // write already uses) fixes it for every item, not just this one.
-    call_rom_function(0x02E5C0, { (uint16_t)(INVENTORY_ITEMS[item_idx].addr - 0xC51), 0, ram[0x1AFF] });
+    call_rom_function(ROM_SAVE_ITEM_FIELD_TO_SLOT, { (uint16_t)(INVENTORY_ITEMS[item_idx].addr - ITEM_QUANTITY_BASE_ADDR), 0, ram[CURRENT_SAVE_SLOT_ADDR] });
     if (g_inv_frozen[item_idx]) {
         g_inv_frozen_value[item_idx] = (uint16_t)new_val;
         save_cheat_state();

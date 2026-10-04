@@ -20,7 +20,7 @@
 void export_visible_sprite_clusters(const std::string& out_dir, std::set<std::string>& exported_clusters) {
     struct ExtractSprite { uint16_t tile, attr; int x, y; uint32_t w, h; int priority; int slot; };
     std::vector<ExtractSprite> active;
-    uint32_t sprite_addr2 = 0x2C00;
+    uint32_t sprite_addr2 = SPRITE_TABLE_ADDR;
     for (int i = 0; i < 256; i++) {
         uint16_t tile = ram[sprite_addr2 + i * 4 + 0];
         if (!tile) continue;
@@ -30,7 +30,7 @@ void export_visible_sprite_clusters(const std::string& out_dir, std::set<std::st
         uint32_t tw = 8 << ((attr & 0x0030) >> 4);
         uint32_t th = 8 << ((attr & 0x00c0) >> 6);
         int cx = raw_x, cy = raw_y;
-        if (!(video_regs[0x42] & 0x0002)) {
+        if (!(video_regs[VREG_SPRITE_CONTROL] & 0x0002)) {
             cx = (320 / 2) + raw_x - (int)tw / 2;
             cy = (256 / 2) - raw_y - (int)th / 2;
         }
@@ -91,7 +91,7 @@ void export_visible_sprite_clusters(const std::string& out_dir, std::set<std::st
             uint32_t words_per_tile = bits_per_row * s.h;
             uint32_t palette_offset = (s.attr & 0x0f00) >> 4;
             palette_offset >>= nc_bpp; palette_offset <<= nc_bpp;
-            uint32_t gfx_base = 0x40 * video_regs[0x22];
+            uint32_t gfx_base = 0x40 * video_regs[VREG_SPRITE_SEGMENT];
             for (uint32_t py = 0; py < s.h; py++) {
                 uint32_t ty = flip_y ? (s.h - 1 - py) : py;
                 uint32_t m = gfx_base + words_per_tile * s.tile + bits_per_row * ty;
@@ -109,7 +109,7 @@ void export_visible_sprite_clusters(const std::string& out_dir, std::set<std::st
                     bits &= 0xffff;
                     int dx = s.x + px - minX, dy = s.y + (int)py - minY;
                     if (dx < 0 || dx >= cw || dy < 0 || dy >= ch) continue;
-                    uint16_t rgb = ram[0x2B00 + palette_offset + color_idx];
+                    uint16_t rgb = ram[PALETTE_RAM_ADDR + palette_offset + color_idx];
                     if (!(rgb & 0x8000)) canvas[dy * cw + dx] = decode_color(rgb);
                 }
             }
@@ -170,8 +170,8 @@ void sprite_export_handle_hotkeys() {
 if (IsKeyPressed(KEY_F8)) {
     FILE* sf = fopen("sprite_dump.log", "w");
     if (sf) {
-        fprintf(sf, "spritegfx_addr_reg(0x22)=0x%04X video_regs42=0x%04X\n", video_regs[0x22], video_regs[0x42]);
-        uint32_t sprite_addr = 0x2C00;
+        fprintf(sf, "spritegfx_addr_reg(0x22)=0x%04X video_regs42=0x%04X\n", video_regs[VREG_SPRITE_SEGMENT], video_regs[VREG_SPRITE_CONTROL]);
+        uint32_t sprite_addr = SPRITE_TABLE_ADDR;
         for (int i = 0; i < 256; i++) {
             uint16_t tile = ram[sprite_addr + i * 4 + 0];
             if (!tile) continue;

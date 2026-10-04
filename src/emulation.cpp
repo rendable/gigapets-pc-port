@@ -7,7 +7,7 @@
 static void emulate_frame() {
     unsp_20_device& cpu = *cpu_ptr;
 
-    if (video_regs[0x62] & 1) { video_regs[0x63] |= 1; check_video_irq(); }
+    if (video_regs[VREG_IRQ_ENABLE] & 1) { video_regs[VREG_IRQ_STATUS] |= 1; check_video_irq(); }
     // Real unSP instructions cost variable cycles (2-12+), not a flat 1 -
     // budget against actual cycles consumed so this matches real
     // hardware throughput per frame instead of running far more

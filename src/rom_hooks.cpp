@@ -71,7 +71,7 @@ bool rom_hooks_before_step(unsp_20_device& cpu) {
         cpu.set_r(unsp_12_device::REG_R1, 0x7B);
         force_r1_sentinel = false;
     }
-    if (g_minipet_spawned && full_pc() == 0x04617D) {
+    if (g_minipet_spawned && full_pc() == ROM_MINIPET_ANIM_LOAD) {
         force_r1_sentinel = true;
     }
 
@@ -98,8 +98,8 @@ bool rom_hooks_before_step(unsp_20_device& cpu) {
     // (hold Left+Select before the Hasbro screen for the chime,
     // release, then Up, Down, Menu, Cancel in that exact order)
     // - that part is genuine ROM logic, unaffected by this hook.
-    if (full_pc() == 0x03C9E8) {
-        ram[0x1A4E] = 1;
+    if (full_pc() == ROM_TEST_MENU_GATE) {
+        ram[TEST_MENU_UNLOCK_FLAG_ADDR] = 1;
     }
     // PlaySoundEffect's real prologue (verified via disassembly):
     // push bp,sp; sp-=2; bp=sp+1; r1=bp+5; r2=[bp+5]. At
@@ -107,7 +107,7 @@ bool rom_hooks_before_step(unsp_20_device& cpu) {
     // r2 holds the sound id argument (p0). 0x59 is the chime -
     // used to time the release relative to the real threshold
     // instead of a guessed fixed duration.
-    if (full_pc() == 0x04D856) {
+    if (full_pc() == ROM_PLAY_SOUND_EFFECT_ARG_READY) {
         uint16_t sound_id = cpu.get_r(unsp_12_device::REG_R2);
         if (sound_id == 0x59 && g_test_menu_seq_active && g_test_menu_chime_frame < 0) {
             g_test_menu_chime_frame = g_test_menu_seq_frame;
@@ -119,7 +119,7 @@ bool rom_hooks_before_step(unsp_20_device& cpu) {
     // real erase-everything side effect) and reboot instead of
     // hanging, so the player gets their save back and lands on
     // the main menu like turning the device back on would.
-    if (full_pc() == 0x04F658 && g_test_mode_backup_valid) {
+    if (full_pc() == ROM_POWER_DOWN_HARDWARE && g_test_mode_backup_valid) {
         memcpy(eeprom_data, g_test_mode_eeprom_backup, sizeof(eeprom_data));
         eeprom_save();
         g_test_mode_backup_valid = false;
@@ -155,7 +155,7 @@ void rom_hooks_after_step(unsp_20_device& cpu) {
     // the self-jump inside it, and the eeprom-safe full-reset
     // recovery this replaced are now all permanently
     // unreachable, so removed rather than left as dead code.
-    if (full_pc() == 0x01D31C) {
+    if (full_pc() == ROM_IDLE_TIMEOUT_COMPARE) {
         cpu.set_r(unsp_12_device::REG_R1, 0);
     }
 
@@ -193,7 +193,7 @@ void rom_hooks_after_step(unsp_20_device& cpu) {
     // no-link-partner bailout every time, matching real
     // hardware's default (unplugged) behavior without touching
     // button input or any other GPIO bit on this address.
-    if (full_pc() == 0x046c3f) {
+    if (full_pc() == ROM_LINK_PARTNER_GATE) {
         cpu.set_r(unsp_12_device::REG_R1, 0);
     }
 
@@ -212,7 +212,7 @@ void rom_hooks_after_step(unsp_20_device& cpu) {
     // outcome exactly as if a tick had arrived - real, verified
     // fix for this specific architectural mismatch, independent
     // of the Quit-freeze below.
-    if (full_pc() == 0x01CE31) {
+    if (full_pc() == ROM_PALETTE_BLEND_TICK_WAIT) {
         cpu.set_r(unsp_12_device::REG_R1, cpu.get_r(unsp_12_device::REG_R3) + 1);
     }
 }

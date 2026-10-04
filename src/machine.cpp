@@ -75,7 +75,7 @@ void call_rom_function(uint32_t target_full_addr, const std::vector<uint16_t>& a
         // burst outside that per-frame loop, so without also pumping it
         // periodically here, a callee waiting on a tick would spin
         // until this loop's guard cap instead of ever seeing one arrive.
-        if (guard % 7500 == 0 && (video_regs[0x62] & 1)) { video_regs[0x63] |= 1; check_video_irq(); }
+        if (guard % 7500 == 0 && (video_regs[VREG_IRQ_ENABLE] & 1)) { video_regs[VREG_IRQ_STATUS] |= 1; check_video_irq(); }
         cpu_ptr->step(1);
         if (full_pc() == orig_full_pc) break;
     }
@@ -96,7 +96,7 @@ bool watchdog_enabled = false;
 int watchdog_frames_left = 0;
 
 void check_video_irq() {
-    if (video_regs[0x63] & video_regs[0x62]) cpu_ptr->execute_set_input(UNSP_IRQ0_LINE, 1);
+    if (video_regs[VREG_IRQ_STATUS] & video_regs[VREG_IRQ_ENABLE]) cpu_ptr->execute_set_input(UNSP_IRQ0_LINE, 1);
     else cpu_ptr->execute_set_input(UNSP_IRQ0_LINE, 0);
 }
 

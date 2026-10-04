@@ -5,25 +5,25 @@
 
 uint16_t memory_read16(uint32_t addr) {
     if (addr < 0x2800) return ram[addr];
-    if (addr <= 0x28FF) return video_regs[addr - 0x2800];
+    if (addr <= 0x28FF) return video_regs[addr - VIDEO_REGS_BASE];
     if (addr <= 0x2FFF) return ram[addr];
     if (addr <= 0x31FF) return audio_r(addr - 0x3000);
     if (addr <= 0x33FF) return audio_phase_r(addr - 0x3200);
     if (addr <= 0x341F) return audio_ctrl_regs[addr - 0x3400];
     if (addr <= 0x3FFF) {
         // Hardware PRNG
-        if (addr == 0x3D2C || addr == 0x3D2D) return (uint16_t)rand();
+        if (addr == REG_PRNG1 || addr == REG_PRNG2) return (uint16_t)rand();
 
         // ADC Data (Random Pet Colors) - ready bit + random low bits
-        if (addr == 0x3D27) return (uint16_t)((rand() & 0x0FFF) | 0x8000);
+        if (addr == REG_ADC_DATA) return (uint16_t)((rand() & 0x0FFF) | 0x8000);
 
         // REG_DATA_SEGMENT passthrough - see the DS-register bug note above.
-        if (addr == 0x3D2F) return cpu_ptr->get_ds();
+        if (addr == REG_DATA_SEGMENT) return cpu_ptr->get_ds();
 
         // GPIO Port A Data (Inputs) - REG_IOA_DATA. Buttons are wired to
         // Port A; bit index matches GameButton enum order by construction.
-        if (addr == 0x3D01) {
-            uint16_t val = io[addr - 0x3000];
+        if (addr == REG_IOA_DATA) {
+            uint16_t val = io[addr - IO_REGS_BASE];
             uint16_t low = 0x0000; // active-high; default = nothing pressed
             if (!g_mod_menu_open) { // don't let mod-menu navigation leak into the game
                 for (int b = 0; b < GAME_BUTTON_COUNT; b++) {
@@ -77,12 +77,12 @@ uint16_t memory_read16(uint32_t addr) {
         }
 
         // GPIO Port B (EEPROM DO on bit 3)
-        if (addr == 0x3D06) {
-            uint16_t val = io[addr - 0x3000];
+        if (addr == REG_IOB_DATA) {
+            uint16_t val = io[addr - IO_REGS_BASE];
             return (val & ~0x0008) | (eeprom_do_read() ? 0x0008 : 0);
         }
 
-        return io[addr - 0x3000];
+        return io[addr - IO_REGS_BASE];
     }
     if (addr < 0x400000) return rom[addr];
     return 0;
@@ -92,18 +92,18 @@ void memory_write16(uint32_t addr, uint16_t data) {
     if (addr < 0x2800) {
         ram[addr] = data;
     } else if (addr <= 0x28FF) {
-        if (addr == 0x2863) { video_regs[0x63] &= ~data; check_video_irq(); }
-        else if (addr == 0x2862) { video_regs[0x62] = data; check_video_irq(); }
-        else if (addr == 0x2872) {
-            video_regs[0x72] = data & 0x03FF;
-            uint16_t len = video_regs[0x72] ? video_regs[0x72] : 0x400;
-            uint32_t src = video_regs[0x70] & 0x3FFF;
-            uint32_t dst = video_regs[0x71] & 0x03FF;
-            for (uint32_t j = 0; j < len; j++) if (dst + j < 0x400) ram[0x2C00 + dst + j] = memory_read16(src + j);
-            video_regs[0x72] = 0;
-            if (video_regs[0x62] & 4) { video_regs[0x63] |= 4; check_video_irq(); }
+        if (addr == VIDEO_REGS_BASE + VREG_IRQ_STATUS) { video_regs[VREG_IRQ_STATUS] &= ~data; check_video_irq(); }
+        else if (addr == VIDEO_REGS_BASE + VREG_IRQ_ENABLE) { video_regs[VREG_IRQ_ENABLE] = data; check_video_irq(); }
+        else if (addr == VIDEO_REGS_BASE + VREG_SPRITE_DMA_LEN) {
+            video_regs[VREG_SPRITE_DMA_LEN] = data & 0x03FF;
+            uint16_t len = video_regs[VREG_SPRITE_DMA_LEN] ? video_regs[VREG_SPRITE_DMA_LEN] : 0x400;
+            uint32_t src = video_regs[VREG_SPRITE_DMA_SRC] & 0x3FFF;
+            uint32_t dst = video_regs[VREG_SPRITE_DMA_DST] & 0x03FF;
+            for (uint32_t j = 0; j < len; j++) if (dst + j < 0x400) ram[SPRITE_TABLE_ADDR + dst + j] = memory_read16(src + j);
+            video_regs[VREG_SPRITE_DMA_LEN] = 0;
+            if (video_regs[VREG_IRQ_ENABLE] & 4) { video_regs[VREG_IRQ_STATUS] |= 4; check_video_irq(); }
         } else {
-            video_regs[addr - 0x2800] = data;
+            video_regs[addr - VIDEO_REGS_BASE] = data;
         }
     } else if (addr <= 0x2FFF) {
         ram[addr] = data;
@@ -114,7 +114,7 @@ void memory_write16(uint32_t addr, uint16_t data) {
     } else if (addr <= 0x341F) {
         audio_ctrl_w(addr - 0x3400, data);
     } else if (addr <= 0x3FFF) {
-        io[addr - 0x3000] = data;
+        io[addr - IO_REGS_BASE] = data;
 
         // REG_DATA_SEGMENT passthrough - see the get_ds() read-side note
         // above. Without wiring the write side too, ds:-prefixed extended
@@ -122,10 +122,10 @@ void memory_write16(uint32_t addr, uint16_t data) {
         // banks - caused invisible-wall collision bugs, pet-selector sprite
         // snapping, and personality-screen icon misplacement, all from the
         // same stale-DS root cause.
-        if (addr == 0x3D2F) cpu_ptr->set_ds(data & 0x3f);
+        if (addr == REG_DATA_SEGMENT) cpu_ptr->set_ds(data & 0x3f);
 
         // GPIO Port B: bit0=EEPROM CS, bit1=CLK, bit2=DI (bit3=DO is read-only)
-        if (addr == 0x3D06) {
+        if (addr == REG_IOB_DATA) {
             eeprom_cs_write((data & 0x0001) != 0);
             eeprom_clk_write((data & 0x0002) != 0);
             eeprom_di_write((data & 0x0004) != 0);
@@ -149,12 +149,12 @@ void memory_write16(uint32_t addr, uint16_t data) {
         // existed as dead scaffolding for exactly this (decrement-and-
         // reset logic already implemented in the main loop) - just never
         // wired to a real trigger before now.
-        if (addr == 0x3D20) {
+        if (addr == REG_SYSTEM_CTRL) {
             bool want_enabled = (data & 0x8000) != 0;
             if (want_enabled && !watchdog_enabled) { watchdog_enabled = true; watchdog_frames_left = 45; }
             else if (!want_enabled) { watchdog_enabled = false; watchdog_frames_left = 0; }
         }
-        if (addr == 0x3D24 && data == 0x55AA && watchdog_enabled) {
+        if (addr == REG_WATCHDOG_CLEAR && data == 0x55AA && watchdog_enabled) {
             watchdog_frames_left = 45;
         }
 
@@ -171,18 +171,18 @@ void memory_write16(uint32_t addr, uint16_t data) {
         // (plausible cause of the new-game spawn/stats corruption). The clear
         // alone was also needed already, since the ROM's wait-for-DMA-complete
         // poll loop spins forever on a 0x3E02 value that never resets.
-        if (addr == 0x3E02) {
-            uint32_t src = ((io[0x3E01 - 0x3000] & 0x3f) << 16) | io[0x3E00 - 0x3000];
-            uint32_t dst = io[0x3E03 - 0x3000] & 0x3fff;
+        if (addr == SYSDMA_LENGTH) {
+            uint32_t src = ((io[SYSDMA_SRC_HI - IO_REGS_BASE] & 0x3f) << 16) | io[SYSDMA_SRC_LO - IO_REGS_BASE];
+            uint32_t dst = io[SYSDMA_DST - IO_REGS_BASE] & 0x3fff;
             uint32_t len = data & ~0xc000;
             if (!(data & 0xc000)) {
                 for (uint32_t j = 0; j < len; j++) memory_write16((dst + j) & 0x3fff, memory_read16(src + j));
                 src += len;
-                io[0x3E00 - 0x3000] = (uint16_t)src;
-                io[0x3E01 - 0x3000] = (src >> 16) & 0x3f;
-                io[0x3E03 - 0x3000] = (dst + len) & 0x3fff;
+                io[SYSDMA_SRC_LO - IO_REGS_BASE] = (uint16_t)src;
+                io[SYSDMA_SRC_HI - IO_REGS_BASE] = (src >> 16) & 0x3f;
+                io[SYSDMA_DST - IO_REGS_BASE] = (dst + len) & 0x3fff;
             }
-            io[0x3E02 - 0x3000] = 0;
+            io[SYSDMA_LENGTH - IO_REGS_BASE] = 0;
         }
     }
 }

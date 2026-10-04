@@ -16,7 +16,7 @@ Color decode_color(uint16_t rgb555) {
     return c;
 }
 
-// Blend level control (video_regs[0x2A] & 3) - real hardware's alpha-blend
+// Blend level control (video_regs[VREG_BLEND_LEVEL] & 3) - real hardware's alpha-blend
 // mode for tiles/sprites (shadows, glass, etc): min level is 25% opaque, max
 // is 100% opaque. Matches spg_renderer_device::mix_channel / s_blend_levels.
 static const uint8_t BLEND_LEVELS[4] = { 0x08, 0x10, 0x18, 0x20 };
@@ -69,7 +69,7 @@ void draw_page(Color* framebuffer, int fb_w, int margin_l, int margin_r, int pag
                 uint32_t color_idx = bits >> 16;
                 bits &= 0xffff;
                 int screen_x_lm = x + margin_l;
-                uint16_t rgb = ram[0x2B00 + palette_offset + color_idx];
+                uint16_t rgb = ram[PALETTE_RAM_ADDR + palette_offset + color_idx];
                 if (!(rgb & 0x8000)) {
                     framebuffer[y * fb_w + screen_x_lm] = decode_color(rgb);
                 }
@@ -99,7 +99,7 @@ void draw_page(Color* framebuffer, int fb_w, int margin_l, int margin_r, int pag
 
         uint32_t realxscroll = xscroll;
         if (ctrl & 0x0010) { // Row scroll: per-scanline X offset (0x2900-0x29FF)
-            realxscroll += (int16_t)ram[0x2900 + ((y + yscroll) & 0xff)];
+            realxscroll += (int16_t)ram[ROW_SCROLL_RAM_ADDR + ((y + yscroll) & 0xff)];
         }
         const int upperscrollbits = (realxscroll >> (tile_width + 3));
         const int endpos = (320 + tile_w) / tile_w;
@@ -156,12 +156,12 @@ void draw_page(Color* framebuffer, int fb_w, int margin_l, int margin_r, int pag
                 {
                     int screen_x = drawx + px + margin_l;
                     if (screen_x >= 0 && screen_x < fb_w) {
-                        uint16_t rgb = ram[0x2B00 + palette_offset + color_idx];
+                        uint16_t rgb = ram[PALETTE_RAM_ADDR + palette_offset + color_idx];
                         if (!(rgb & 0x8000)) {
                             Color top = decode_color(rgb);
                             int fbi = y * fb_w + screen_x;
                             framebuffer[fbi] = blend
-                                ? mix_color(framebuffer[fbi], top, BLEND_LEVELS[video_regs[0x2A] & 3])
+                                ? mix_color(framebuffer[fbi], top, BLEND_LEVELS[video_regs[VREG_BLEND_LEVEL] & 3])
                                 : top;
                         }
                     }
@@ -172,8 +172,8 @@ void draw_page(Color* framebuffer, int fb_w, int margin_l, int margin_r, int pag
 }
 
 void draw_sprites(Color* framebuffer, int fb_w, int margin_l, int target_priority) {
-    uint32_t sprite_addr = 0x2C00;
-    uint32_t spritegfxdata_addr = 0x40 * video_regs[0x22];
+    uint32_t sprite_addr = SPRITE_TABLE_ADDR;
+    uint32_t spritegfxdata_addr = 0x40 * video_regs[VREG_SPRITE_SEGMENT];
 
     for (int i = 0; i < 256; i++) {
         uint16_t tile = ram[sprite_addr + i * 4 + 0];
@@ -187,7 +187,7 @@ void draw_sprites(Color* framebuffer, int fb_w, int margin_l, int target_priorit
         uint32_t tile_h = 8 << ((attr & 0x00c0) >> 6);
         uint32_t tile_w = 8 << ((attr & 0x0030) >> 4);
         int centered_x = raw_x, centered_y = raw_y;
-        if (!(video_regs[0x42] & 0x0002)) {
+        if (!(video_regs[VREG_SPRITE_CONTROL] & 0x0002)) {
             centered_x = (320 / 2) + raw_x - (int)tile_w / 2;
             centered_y = (256 / 2) - raw_y - (int)tile_h / 2;
         }
@@ -247,12 +247,12 @@ void draw_sprites(Color* framebuffer, int fb_w, int margin_l, int target_priorit
                 {
                     int draw_x = ((x + px) & 0x1ff) + margin_l;
                     if (draw_x >= 0 && draw_x < fb_w) {
-                        uint16_t rgb = ram[0x2B00 + palette_offset + color_idx];
+                        uint16_t rgb = ram[PALETTE_RAM_ADDR + palette_offset + color_idx];
                         if (!(rgb & 0x8000)) {
                             Color top = decode_color(rgb);
                             int fbi = draw_y * fb_w + draw_x;
                             framebuffer[fbi] = blend
-                                ? mix_color(framebuffer[fbi], top, BLEND_LEVELS[video_regs[0x2A] & 3])
+                                ? mix_color(framebuffer[fbi], top, BLEND_LEVELS[video_regs[VREG_BLEND_LEVEL] & 3])
                                 : top;
                         }
                     }
@@ -331,8 +331,8 @@ if (did_interp_substitute) {
 for (int i = 0; i < WIDE_W * NATIVE_H; i++) framebuffer[i] = Color{0, 0, 0, 0};
 
 for (int priority = 0; priority < 4; priority++) {
-    draw_page(framebuffer, WIDE_W, WIDE_MARGIN_L, WIDE_MARGIN_R, 2, &video_regs[0x18], &video_regs[0x16], video_regs[0x21], priority);
-    draw_page(framebuffer, WIDE_W, WIDE_MARGIN_L, WIDE_MARGIN_R, 1, &video_regs[0x12], &video_regs[0x10], video_regs[0x20], priority);
+    draw_page(framebuffer, WIDE_W, WIDE_MARGIN_L, WIDE_MARGIN_R, 2, &video_regs[VREG_PAGE2_ATTR], &video_regs[VREG_PAGE2_X_SCROLL], video_regs[VREG_PAGE2_SEGMENT], priority);
+    draw_page(framebuffer, WIDE_W, WIDE_MARGIN_L, WIDE_MARGIN_R, 1, &video_regs[VREG_PAGE1_ATTR], &video_regs[VREG_PAGE1_X_SCROLL], video_regs[VREG_PAGE1_SEGMENT], priority);
 
     draw_sprites(framebuffer, WIDE_W, WIDE_MARGIN_L, priority);
 }

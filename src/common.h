@@ -4,6 +4,8 @@
 #include "base.h"
 #include "constants.h"
 #include "game_addrs.h"
+#include "hw_regs.h"
+#include "rom_addrs.h"
 #include "machine.h"
 #include "eeprom.h"
 #include "audio.h"
