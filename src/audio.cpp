@@ -819,3 +819,35 @@ void audio_queue_feed_stream(AudioStream stream) {
         UpdateAudioStream(stream, chunk, CHUNK);
     }
 }
+
+// ROOT CAUSE of the ~10% slow-music tempo bug: audio used to
+// be generated in one big lump-sum batch AFTER this whole
+// cpu.step() loop finished for the frame (confirmed via
+// tempo_check.log/audio_rate_check.log that BOTH sim-tick
+// pacing and raw sample-generation RATE were already exactly
+// correct - ratio 1.0000/0.9998 - so the bug isn't a
+// throughput/pacing miscalculation at all). The real problem
+// was ORDER: ~1172 samples generate per frame, easily
+// spanning many full BEAT_BASE_COUNT cycles, so many
+// separate "beat expired" IRQ4 assertions could fire back to
+// back while the CPU wasn't running at all (it had already
+// used up its cycle budget for the frame) - the CPU would
+// only ever see "IRQ4 currently asserted" ONCE it resumed
+// next frame, coalescing what should have been several
+// separate Music_SequencerTick() calls (via IrqHandlerAudio)
+// into far fewer, under-advancing the sequencer. Generating
+// exactly one sample per 384 CPU cycles, interleaved here,
+// matches real hardware's own clock relationship (a
+// TIMER_CALLBACK_MEMBER on a genuine per-cycle-derived timer
+// in MAME, not a per-frame batch) and lets the very next
+// cpu.step() call see each beat/IRQ promptly and
+// individually, the same way real silicon does.
+void audio_run_cycles(long cycles_this_instr) {
+audio_cycle_debt += (double)cycles_this_instr;
+while (audio_cycle_debt >= 384.0) {
+    audio_cycle_debt -= 384.0;
+    int16_t one_sample[2];
+    generate_audio_frame(one_sample, 1);
+    audio_queue_push(one_sample, 1);
+}
+}

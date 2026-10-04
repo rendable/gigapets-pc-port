@@ -13,3 +13,4 @@ extern int crt_output_size_loc, sharp_source_size_loc, sharp_output_scale_loc;
 
 void ui_draw_text(const char* text, int x, int y, int font_size, Color color);
 int ui_measure_text(const char* text, int font_size);
+void ui_update_hud_camera();

@@ -92,3 +92,56 @@ bool find_route_door(uint16_t fromArea, uint16_t toArea, int16_t playerX, int16_
     while (prev[step] != -1 && prev[step] != (int16_t)fromArea) step = (uint16_t)prev[step];
     return find_door_to_area(fromArea, step, playerX, playerY, outX, outY);
 }
+
+void quest_arrow_draw() {
+// Quest Arrow: points toward the door leading to the current
+// quest's delivery-target area (g_contentPoolTable/0x1E68 - despite
+// Ghidra's inherited "QuestGiver" naming, this is the actual
+// delivery target, set once at quest-roll time and stable through
+// the whole quest, correctly distinguishing "bring to me" from
+// "bring to someone else" per real testing). 0x1E4F!=0xFFFF matches
+// the real game's own gate for "is a quest objective active" (same
+// check DrawQuestTurnInSummary uses before showing its own text).
+// v1: direct area connections only, via the empirically-gathered
+// DOOR_LINKS table - no arrow shown if the target area isn't
+// directly reachable from here, or if already in the target area.
+if (g_quest_arrow_enabled) {
+    bool gate = ram[GAME_STATE_ADDR] == GAME_STATE_IN_ROOM && ram[0x1E4F] != 0xFFFF;
+    uint16_t pool_idx = ram[0x1E68];
+    uint16_t target_area = rom[0xDAEC + pool_idx * 16]; // real per-NPC area, lives in ROM not RAM
+    uint16_t cur_area = ram[LOCATION_ID_ADDR];
+    bool door_found = false;
+    int16_t door_x = 0, door_y = 0;
+    if (gate && cur_area != target_area) {
+        int16_t px = (int16_t)ram[PLAYER_WORLD_X], py = (int16_t)ram[PLAYER_WORLD_Y];
+        door_found = find_route_door(cur_area, target_area, px, py, &door_x, &door_y);
+        if (door_found) {
+            float angle = atan2f((float)(door_y - py), (float)(door_x - px));
+            float acx = WIDE_W / 2.0f, acy = 36.0f;
+            float c = cosf(angle), s = sinf(angle);
+            // DrawTriangle/DrawTriangleFan fill would not render
+            // solid here even with culling disabled - real cause
+            // never pinned down. Angled side-pieces for the head
+            // (DrawPoly, then two angled DrawRectanglePro bars)
+            // both came out disconnected/malformed. Simplest
+            // foolproof construction: every single piece below
+            // uses the exact same rotation (angle_deg) and is
+            // placed at successive distances along that one
+            // direction line - a "staircase" of rectangles
+            // narrowing toward the tip approximates a point, with
+            // no separate angle math anywhere to get wrong or
+            // drift out of sync.
+            float angle_deg = angle * RAD2DEG;
+            float shaft_len = 14.0f, shaft_thick = 6.0f;
+            DrawRectanglePro(Rectangle{ acx, acy, shaft_len, shaft_thick }, Vector2{ 0, shaft_thick / 2 }, angle_deg, WHITE);
+            static const float SEG_W[5] = { 18, 13.5f, 9.5f, 6, 2.5f };
+            float seg_len = 3.0f, dist = shaft_len;
+            for (int i = 0; i < 5; i++) {
+                float sx = acx + c * dist, sy = acy + s * dist;
+                DrawRectanglePro(Rectangle{ sx, sy, seg_len, SEG_W[i] }, Vector2{ 0, SEG_W[i] / 2 }, angle_deg, WHITE);
+                dist += seg_len;
+            }
+        }
+    }
+}
+}

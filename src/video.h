@@ -19,3 +19,6 @@ extern bool g_have_interp_snapshot;
 Color decode_color(uint16_t rgb555);
 void draw_page(Color* framebuffer, int fb_w, int margin_l, int margin_r, int page_idx, uint16_t* tilemapregs, uint16_t* scrollregs, uint32_t tilegfxdata_addr, int target_priority);
 void draw_sprites(Color* framebuffer, int fb_w, int margin_l, int target_priority);
+void video_snapshot_sprites();
+void render_game_frame(Color* framebuffer, double sim_fraction);
+void present_game_frame(const Color* framebuffer, double frame_time);

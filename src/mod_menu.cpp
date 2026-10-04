@@ -629,3 +629,339 @@ void draw_mod_menu_row(const ModMenuRowRect& r) {
     }
     ui_draw_text(value_str, (int)r.value.x, (int)r.value.y, 15, text_color);
 }
+
+// Handles all Mod Menu input for this frame: open/close, text entry, dropdowns, key rebinding,
+// keyboard/gamepad navigation, and mouse clicks.
+void mod_menu_update() {
+// Tab always works as a fallback even if the user rebinds the
+// primary key/gamepad button to something else, so a bad rebind
+// can never lock them out of the menu that would let them fix it.
+bool mod_menu_toggle_kb = IsKeyPressed(KEY_TAB) || (g_mod_menu_key != KEY_TAB && IsKeyPressed(g_mod_menu_key));
+bool mod_menu_toggle_gp = IsGamepadAvailable(0) && IsGamepadButtonPressed(0, g_mod_menu_gamepad);
+if ((mod_menu_toggle_kb || mod_menu_toggle_gp) && g_editing_row < 0 && g_awaiting_keybind_for < 0) g_mod_menu_open = !g_mod_menu_open;
+if (g_mod_menu_open) {
+    // Same fixed virtual UI space the stat HUD/FPS counter already
+    // use (see g_hud_cam, computed once at the top of this loop),
+    // NOT the real window size - everything drawn under
+    // BeginMode2D(g_hud_cam) is scaled from this space into
+    // whatever the actual window/fullscreen size
+    // is, so feeding this the real size double-scales/mispositions
+    // it once that differs from the default (e.g. fullscreen).
+    compute_mod_menu_layout((int)(WIDE_W * DEFAULT_WINDOW_SCALE), (int)(NATIVE_H * DEFAULT_WINDOW_SCALE));
+
+    if (g_editing_row >= 0) {
+        int ch;
+        while ((ch = GetCharPressed()) != 0) {
+            if (ch >= '0' && ch <= '9' && g_edit_buffer_len < (int)sizeof(g_edit_buffer) - 1) {
+                g_edit_buffer[g_edit_buffer_len++] = (char)ch;
+                g_edit_buffer[g_edit_buffer_len] = '\0';
+            }
+        }
+        if (IsKeyPressed(KEY_BACKSPACE) && g_edit_buffer_len > 0) {
+            g_edit_buffer_len--;
+            g_edit_buffer[g_edit_buffer_len] = '\0';
+        }
+        bool gp_ok_edit = IsGamepadAvailable(0);
+        if (IsKeyPressed(KEY_ENTER) || (gp_ok_edit && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN))) commit_edit_row();
+        // Typing a custom number still needs a real keyboard (no
+        // on-screen keypad), but a controller-only player must be
+        // able to back out of this prompt without one - same fixed
+        // "Right Face = cancel/back" convention as the dropdown and
+        // rebind-capture cancel below.
+        if (IsKeyPressed(KEY_ESCAPE) || (gp_ok_edit && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT))) cancel_edit_row();
+    } else if (g_custom_add_phase != CUSTOM_ADD_NONE) {
+        // Two-step add flow: type a hex address, Enter, then type a
+        // name, Enter. Same GetCharPressed() text-capture pattern as
+        // the numeric edit box above, just with a different allowed
+        // character set per phase (hex digits vs. any printable
+        // character for the name).
+        int ch;
+        while ((ch = GetCharPressed()) != 0) {
+            bool allowed = (g_custom_add_phase == CUSTOM_ADD_ADDRESS)
+                ? ((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F'))
+                : (ch >= 32 && ch <= 125);
+            if (allowed && g_custom_add_buffer_len < (int)sizeof(g_custom_add_buffer) - 1) {
+                g_custom_add_buffer[g_custom_add_buffer_len++] = (char)ch;
+                g_custom_add_buffer[g_custom_add_buffer_len] = '\0';
+            }
+        }
+        if (IsKeyPressed(KEY_BACKSPACE) && g_custom_add_buffer_len > 0) {
+            g_custom_add_buffer_len--;
+            g_custom_add_buffer[g_custom_add_buffer_len] = '\0';
+        }
+        if (IsKeyPressed(KEY_ENTER) && g_custom_add_buffer_len > 0) {
+            if (g_custom_add_phase == CUSTOM_ADD_ADDRESS) {
+                unsigned long parsed = strtoul(g_custom_add_buffer, nullptr, 16);
+                if (parsed >= sizeof(ram) / sizeof(ram[0])) parsed = sizeof(ram) / sizeof(ram[0]) - 1;
+                g_custom_add_pending_addr = (uint16_t)parsed;
+                g_custom_add_phase = CUSTOM_ADD_NAME;
+                g_custom_add_buffer[0] = 0; g_custom_add_buffer_len = 0;
+            } else if (g_custom_mod_count < MAX_CUSTOM_MODS) {
+                CustomModEntry& e = g_custom_mods[g_custom_mod_count++];
+                strncpy(e.name, g_custom_add_buffer, sizeof(e.name) - 1); e.name[sizeof(e.name) - 1] = 0;
+                e.addr = g_custom_add_pending_addr;
+                e.favorite = false; e.frozen = false; e.frozen_value = 0;
+                save_custom_mods();
+                g_custom_add_phase = CUSTOM_ADD_NONE;
+            } else {
+                g_custom_add_phase = CUSTOM_ADD_NONE; // list full, silently drop
+            }
+        }
+        if (IsKeyPressed(KEY_ESCAPE)) g_custom_add_phase = CUSTOM_ADD_NONE;
+    } else if (row_is_custom(g_mod_menu_selection) && IsKeyPressed(KEY_DELETE)) {
+        // Remove the selected custom entry - shift the rest down to
+        // keep the array/rows contiguous, then persist.
+        int i = g_mod_menu_selection - ROW_CUSTOM_START;
+        for (int j = i; j < g_custom_mod_count - 1; j++) g_custom_mods[j] = g_custom_mods[j + 1];
+        g_custom_mod_count--;
+        save_custom_mods();
+    } else if (g_open_dropdown_stat >= 0) {
+        // Preset dropdown open: only its own option list is live -
+        // any click (hit or miss) closes it, matching normal
+        // dropdown UX.
+        Vector2 mouse = GetScreenToWorld2D(GetMousePosition(), g_hud_cam);
+        const CheatStatRow& row = CHEAT_STATS[g_open_dropdown_stat];
+        int opt_h = 20;
+        Rectangle list_rect{ g_dropdown_anchor.x, g_dropdown_anchor.y + g_dropdown_anchor.height,
+                              240, (float)(row.preset_count * opt_h) };
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            if (CheckCollisionPointRec(mouse, list_rect)) {
+                int option = (int)((mouse.y - list_rect.y) / opt_h);
+                if (option >= 0 && option < row.preset_count) {
+                    set_stat_value(g_open_dropdown_stat, row.presets[option].value);
+                }
+            }
+            g_open_dropdown_stat = -1;
+        }
+        bool gp_ok_dd = IsGamepadAvailable(0);
+        if (IsKeyPressed(KEY_DOWN) || (gp_ok_dd && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_DOWN))) {
+            g_dropdown_gp_index = (g_dropdown_gp_index + 1) % row.preset_count;
+        }
+        if (IsKeyPressed(KEY_UP) || (gp_ok_dd && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_UP))) {
+            g_dropdown_gp_index = (g_dropdown_gp_index - 1 + row.preset_count) % row.preset_count;
+        }
+        if (IsKeyPressed(KEY_ENTER) || (gp_ok_dd && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN))) {
+            set_stat_value(g_open_dropdown_stat, row.presets[g_dropdown_gp_index].value);
+            g_open_dropdown_stat = -1;
+        }
+        if (IsKeyPressed(KEY_ESCAPE) || (gp_ok_dd && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT))) g_open_dropdown_stat = -1;
+    } else if (g_awaiting_keybind_for >= 0 && g_awaiting_gamepad_rebind) {
+        // Gamepad capture: only keyboard Escape cancels - any
+        // gamepad button, including whatever's bound to Back, gets
+        // bound (rebinding IS the point of this capture mode).
+        if (IsKeyPressed(KEY_ESCAPE)) {
+            g_awaiting_keybind_for = -1;
+        } else {
+            int btn = get_gamepad_button_pressed(0);
+            if (btn >= 0) {
+                if (g_awaiting_keybind_for == GAME_BUTTON_COUNT) {
+                    g_mod_menu_gamepad = btn;
+                    save_gamepad_binds();
+                } else {
+                    g_gamepad_binding[g_awaiting_keybind_for] = btn;
+                    save_gamepad_binds();
+                }
+                g_awaiting_keybind_for = -1;
+            }
+        }
+    } else if (g_awaiting_keybind_for >= 0) {
+        // Capture the next key pressed and bind it, whatever it is -
+        // except Escape/Tab, which are reserved (Tab already toggles
+        // this menu by default - still true even after rebinding,
+        // since Tab stays reserved as a safety net) and instead
+        // cancel the rebind.
+        int key = GetKeyPressed();
+        if (key == KEY_ESCAPE || key == KEY_TAB) {
+            g_awaiting_keybind_for = -1;
+        } else if (key != 0) {
+            if (g_awaiting_keybind_for == GAME_BUTTON_COUNT) {
+                g_mod_menu_key = key;
+                save_keybinds();
+            } else {
+                g_key_binding[g_awaiting_keybind_for] = key;
+                save_keybinds();
+            }
+            g_awaiting_keybind_for = -1;
+        }
+    } else {
+        // Full controller navigation uses a fixed D-Pad convention
+        // (like the existing confirm button below), not the
+        // player's own remapped in-game bindings - the mod menu is
+        // host-side UI, so it should navigate the same way
+        // regardless of how they've customized actual gameplay
+        // controls.
+        bool gp_ok = IsGamepadAvailable(0);
+        bool nav_down = IsKeyPressed(KEY_DOWN) || (gp_ok && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_DOWN));
+        bool nav_up = IsKeyPressed(KEY_UP) || (gp_ok && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_UP));
+        if (nav_down || nav_up) {
+            int dir = nav_down ? 1 : -1;
+            int pos = 0;
+            for (int i = 0; i < g_mod_menu_layout.logical_count; i++) {
+                if (g_mod_menu_layout.logical_order[i] == g_mod_menu_selection) { pos = i; break; }
+            }
+            pos = (pos + dir + g_mod_menu_layout.logical_count) % g_mod_menu_layout.logical_count;
+            g_mod_menu_selection = g_mod_menu_layout.logical_order[pos];
+            // Keep the new selection inside the visible scroll window
+            // (takes effect next frame's compute_mod_menu_layout).
+            if (pos < g_mod_menu_scroll) g_mod_menu_scroll = pos;
+            else if (pos >= g_mod_menu_scroll + g_mod_menu_layout.main_row_count) {
+                g_mod_menu_scroll = pos - g_mod_menu_layout.main_row_count + 1;
+            }
+        }
+        if (IsKeyPressed(KEY_PAGE_DOWN) || (gp_ok && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_TRIGGER_1))) g_mod_menu_scroll += 10;
+        if (IsKeyPressed(KEY_PAGE_UP) || (gp_ok && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_TRIGGER_1))) g_mod_menu_scroll -= 10;
+        if (IsKeyPressed(KEY_LEFT) || (gp_ok && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_LEFT))) adjust_row(g_mod_menu_selection, -1);
+        if (IsKeyPressed(KEY_RIGHT) || (gp_ok && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_RIGHT))) adjust_row(g_mod_menu_selection, 1);
+        // Menu confirm accepts either Enter (keyboard) or the
+        // gamepad's bottom face button (a fixed, universal menu-
+        // navigation convention - independent of the player's own
+        // remapped in-game Select binding), so a controller-only
+        // player can also open a Controls row's capture prompt.
+        bool confirm_kb = IsKeyPressed(KEY_ENTER);
+        bool confirm_gp = IsGamepadAvailable(0) && IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN);
+        if (confirm_kb || confirm_gp) {
+            if (row_has_value(g_mod_menu_selection)) begin_edit_row(g_mod_menu_selection);
+            else if (g_mod_menu_selection == ROW_CUSTOM_ADD) {
+                g_custom_add_phase = CUSTOM_ADD_ADDRESS;
+                g_custom_add_buffer[0] = 0; g_custom_add_buffer_len = 0;
+            }
+            else if (row_is_expand_header(g_mod_menu_selection)) adjust_row(g_mod_menu_selection, 1);
+            else if (row_is_keybind(g_mod_menu_selection)) {
+                g_awaiting_keybind_for = g_mod_menu_selection - ROW_CONTROLS_START;
+                g_awaiting_gamepad_rebind = confirm_gp && !confirm_kb;
+            }
+            else if (g_mod_menu_selection == ROW_MOD_MENU_KEY) {
+                g_awaiting_keybind_for = GAME_BUTTON_COUNT;
+                g_awaiting_gamepad_rebind = confirm_gp && !confirm_kb;
+            }
+        }
+
+        Vector2 mouse = GetScreenToWorld2D(GetMousePosition(), g_hud_cam);
+        // Mouse wheel always scrolls the list (never adjusts a row's
+        // value - use the chevrons or type a value for that)
+        // whenever hovering anywhere over either panel.
+        float wheel = GetMouseWheelMove();
+        if (wheel != 0.0f && (CheckCollisionPointRec(mouse, g_mod_menu_layout.main_panel)
+                               || CheckCollisionPointRec(mouse, g_mod_menu_layout.fav_panel)
+                               || CheckCollisionPointRec(mouse, g_mod_menu_layout.frozen_panel))) {
+            g_mod_menu_scroll -= (int)(wheel * 3);
+        }
+
+        ModMenuRowRect* row_sets[2] = { g_mod_menu_layout.main_rows, g_mod_menu_layout.fav_rows };
+        int row_counts[2] = { g_mod_menu_layout.main_row_count, g_mod_menu_layout.fav_row_count };
+        for (int set = 0; set < 2; set++) {
+            for (int i = 0; i < row_counts[set]; i++) {
+                ModMenuRowRect& r = row_sets[set][i];
+                if (!CheckCollisionPointRec(mouse, r.full)) continue;
+                g_mod_menu_selection = r.row_index;
+                if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                    if (r.row_index == ROW_CUSTOM_ADD) {
+                        g_custom_add_phase = CUSTOM_ADD_ADDRESS;
+                        g_custom_add_buffer[0] = 0; g_custom_add_buffer_len = 0;
+                    } else if (row_is_expand_header(r.row_index)) {
+                        adjust_row(r.row_index, 1);
+                    } else if (row_is_keybind(r.row_index)) {
+                        g_awaiting_keybind_for = r.row_index - ROW_CONTROLS_START;
+                        // Column detection: keyboard name draws at
+                        // x+155, gamepad at x+215 (draw_mod_menu_row) -
+                        // clicking past the gamepad column's start
+                        // rebinds that side instead of keyboard.
+                        g_awaiting_gamepad_rebind = mouse.x >= r.full.x + 215;
+                    } else if (r.row_index == ROW_MOD_MENU_KEY) {
+                        g_awaiting_keybind_for = GAME_BUTTON_COUNT;
+                        g_awaiting_gamepad_rebind = mouse.x >= r.full.x + 215;
+                    } else {
+                        bool has_value = row_has_value(r.row_index);
+                        bool has_preset = !row_is_inv_item(r.row_index) && r.row_index >= ROW_STATS_START
+                            && CHEAT_STATS[r.row_index - ROW_STATS_START].preset_count > 0;
+                        if (has_value && CheckCollisionPointRec(mouse, r.fav)) toggle_favorite_row(r.row_index);
+                        else if (has_value && CheckCollisionPointRec(mouse, r.freeze)) toggle_freeze_row(r.row_index);
+                        else if (has_preset && CheckCollisionPointRec(mouse, r.preset_btn)) {
+                            g_open_dropdown_stat = r.row_index - ROW_STATS_START;
+                            g_dropdown_anchor = r.preset_btn;
+                            g_dropdown_gp_index = 0;
+                        }
+                        else if (CheckCollisionPointRec(mouse, r.arrow_ll)) adjust_row(r.row_index, -10);
+                        else if (CheckCollisionPointRec(mouse, r.arrow_l)) adjust_row(r.row_index, -1);
+                        else if (CheckCollisionPointRec(mouse, r.arrow_r)) adjust_row(r.row_index, 1);
+                        else if (CheckCollisionPointRec(mouse, r.arrow_rr)) adjust_row(r.row_index, 10);
+                        else if (has_value && CheckCollisionPointRec(mouse, r.value)) begin_edit_row(r.row_index);
+                    }
+                }
+            }
+        }
+    }
+}
+}
+
+// Draws the Mod Menu panels. Must be called between BeginMode2D(g_hud_cam) and EndMode2D().
+void mod_menu_draw_overlay() {
+if (g_mod_menu_open) {
+    Rectangle mp = g_mod_menu_layout.main_panel;
+    DrawRectangle((int)mp.x, (int)mp.y, (int)mp.width, (int)mp.height, Color{0, 0, 0, 220});
+    DrawRectangleLines((int)mp.x, (int)mp.y, (int)mp.width, (int)mp.height, GREEN);
+    ui_draw_text(g_awaiting_keybind_for >= 0 ? "MOD MENU (Esc cancels rebind)" : "MOD MENU (Tab to close)",
+             (int)mp.x + 10, (int)mp.y + 8, 15, GREEN);
+    // Fav/Freeze checkbox legend - space for this was reserved
+    // (mh's +14) since whenever this was added, but the actual text
+    // was never drawn, leaving the yellow box explained only in the
+    // Favorites panel's empty-state hint and the blue Freeze box
+    // never explained anywhere at all.
+    ui_draw_text("Fav", (int)mp.x + 10, (int)mp.y + 26, 11, YELLOW);
+    ui_draw_text("Freeze", (int)mp.x + 258 + s_label_extra_w + s_value_extra_w - 10, (int)mp.y + 26, 11, SKYBLUE);
+    for (int i = 0; i < g_mod_menu_layout.main_row_count; i++) {
+        const ModMenuRowRect& r = g_mod_menu_layout.main_rows[i];
+        draw_mod_menu_row(r);
+        if (g_mod_menu_layout.separator_after_row[r.row_index]) {
+            int ly = (int)(r.full.y + r.full.height - 2);
+            DrawRectangle((int)r.full.x, ly, (int)r.full.width, 2, Color{180, 180, 180, 255});
+        }
+    }
+    if (g_mod_menu_layout.has_scroll) {
+        char scroll_buf[32];
+        sprintf(scroll_buf, "%d-%d / %d (PgUp/PgDn)", g_mod_menu_scroll + 1,
+                g_mod_menu_scroll + g_mod_menu_layout.main_row_count, g_mod_menu_layout.logical_count);
+        ui_draw_text(scroll_buf, (int)mp.x + 10, (int)(mp.y + mp.height - 16), 11, GRAY);
+    }
+
+    Rectangle fp = g_mod_menu_layout.fav_panel;
+    DrawRectangle((int)fp.x, (int)fp.y, (int)fp.width, (int)fp.height, Color{0, 0, 0, 220});
+    DrawRectangleLines((int)fp.x, (int)fp.y, (int)fp.width, (int)fp.height, YELLOW);
+    ui_draw_text("FAVORITES", (int)fp.x + 10, (int)fp.y + 8, 15, YELLOW);
+    if (g_mod_menu_layout.fav_row_count == 0) {
+        ui_draw_text("Click the yellow box\nnext to a stat to pin it here", (int)fp.x + 10, (int)fp.y + 32, 13, GRAY);
+    } else {
+        for (int i = 0; i < g_mod_menu_layout.fav_row_count; i++) {
+            draw_mod_menu_row(g_mod_menu_layout.fav_rows[i]);
+        }
+    }
+
+    // Frozen panel - explanatory only, unlike Favorites it never
+    // lists rows (freezing already shows on the item's own row via
+    // the filled blue checkbox - this is just the "what does that
+    // blue box mean" explanation Favorites gets from its own
+    // empty-state hint).
+    Rectangle zp = g_mod_menu_layout.frozen_panel;
+    DrawRectangle((int)zp.x, (int)zp.y, (int)zp.width, (int)zp.height, Color{0, 0, 0, 220});
+    DrawRectangleLines((int)zp.x, (int)zp.y, (int)zp.width, (int)zp.height, SKYBLUE);
+    ui_draw_text("FROZEN", (int)zp.x + 10, (int)zp.y + 8, 15, SKYBLUE);
+    ui_draw_text("Click the blue box\nnext to a stat to freeze it", (int)zp.x + 10, (int)zp.y + 32, 13, GRAY);
+
+    if (g_open_dropdown_stat >= 0) {
+        const CheatStatRow& row = CHEAT_STATS[g_open_dropdown_stat];
+        int opt_h = 20;
+        int lx = (int)g_dropdown_anchor.x, ly = (int)(g_dropdown_anchor.y + g_dropdown_anchor.height);
+        int lw = 240, lh = row.preset_count * opt_h;
+        DrawRectangle(lx, ly, lw, lh, Color{20, 20, 20, 240});
+        DrawRectangleLines(lx, ly, lw, lh, YELLOW);
+        for (int i = 0; i < row.preset_count; i++) {
+            if (i == g_dropdown_gp_index) {
+                DrawRectangle(lx, ly + i * opt_h, lw, opt_h, Color{80, 80, 0, 255});
+            }
+            char opt_buf[48];
+            sprintf(opt_buf, "%d: %s", row.presets[i].value, row.presets[i].label);
+            ui_draw_text(opt_buf, lx + 4, ly + i * opt_h + 2, 13, WHITE);
+        }
+    }
+}
+}

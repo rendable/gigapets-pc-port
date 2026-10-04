@@ -31,3 +31,17 @@ int ui_measure_text(const char* text, int font_size) {
 
 Shader crt_shader, sharp_shader;
 int crt_output_size_loc, sharp_source_size_loc, sharp_output_scale_loc;
+
+// Computed once per frame and reused for both mouse-coordinate
+// conversion (mod-menu hit-testing, below) and drawing the overlay
+// UI (stat HUD/mod menu, further down) - both need the same
+// mapping from the fixed virtual UI space to whatever the real
+// window/fullscreen size currently is.
+void ui_update_hud_camera() {
+int sw = GetScreenWidth(), sh = GetScreenHeight();
+float scale = std::min((float)sw / WIDE_W, (float)sh / NATIVE_H);
+float offsetX = (sw - WIDE_W * scale) / 2.0f;
+float offsetY = (sh - NATIVE_H * scale) / 2.0f;
+float hud_zoom = scale / DEFAULT_WINDOW_SCALE;
+g_hud_cam = Camera2D{ Vector2{ offsetX, offsetY }, Vector2{ 0, 0 }, 0.0f, hud_zoom };
+}

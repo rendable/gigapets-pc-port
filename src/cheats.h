@@ -31,3 +31,4 @@ void load_custom_mods();
 void set_stat_value(int stat_idx, int32_t val);
 bool inv_item_capped_at_one(int item_idx);
 void set_inv_value(int item_idx, int32_t new_val);
+void cheats_reassert_frozen();

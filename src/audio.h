@@ -47,3 +47,4 @@ void audio_reset();
 void audio_ctrl_w(uint32_t offset, uint16_t data);
 void audio_queue_push(const int16_t* buf, int num_frames);
 void audio_queue_feed_stream(AudioStream stream);
+void audio_run_cycles(long cycles_this_instr);

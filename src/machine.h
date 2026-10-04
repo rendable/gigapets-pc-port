@@ -19,3 +19,4 @@ inline uint32_t full_pc() { return ((cpu_ptr->get_r(6) & 0x3f) << 16) | cpu_ptr-
 std::string app_path(const char* rel);
 void call_rom_function(uint32_t target_full_addr, const std::vector<uint16_t>& args_in_push_order);
 void check_video_irq();
+void watchdog_tick();

@@ -16,6 +16,7 @@ FetchContent_MakeAvailable(raylib)
 
 set(SOURCES
     src/main.cpp
+    src/emulation.cpp
     src/machine.cpp
     src/memory_map.cpp
     src/eeprom.cpp

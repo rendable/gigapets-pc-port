@@ -53,3 +53,4 @@ int32_t find_word_pattern(const uint16_t* haystack, uint32_t haystack_len, const
 void find_noclip_patch_addresses();
 void set_shadows_disabled(bool disabled);
 void set_noclip_enabled(bool enabled);
+void player_mods_tick();

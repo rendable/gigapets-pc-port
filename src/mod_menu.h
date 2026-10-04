@@ -122,3 +122,5 @@ void commit_edit_row();
 void cancel_edit_row();
 void draw_text_clipped(const char* text, int x, int y, int font_size, Color color, int max_w);
 void draw_mod_menu_row(const ModMenuRowRect& r);
+void mod_menu_update();
+void mod_menu_draw_overlay();

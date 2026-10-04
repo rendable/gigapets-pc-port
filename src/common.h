@@ -22,3 +22,4 @@
 #include "rom_hooks.h"
 #include "window_util.h"
 #include "selftest.h"
+#include "emulation.h"
