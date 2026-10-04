@@ -172,15 +172,15 @@ void set_inv_value(int item_idx, int32_t new_val) {
 }
 
 void cheats_reassert_frozen() {
-// Frozen stats/items: re-assert every tick so game logic (e.g.
-// Hunger ticking down over time) can't change them.
-for (int i = 0; i < CHEAT_STAT_COUNT; i++) {
-    if (g_stat_frozen[i]) ram[CHEAT_STATS[i].addr] = g_stat_frozen_value[i];
-}
-for (int i = 0; i < INVENTORY_ITEM_COUNT; i++) {
-    if (g_inv_frozen[i]) ram[INVENTORY_ITEMS[i].addr] = g_inv_frozen_value[i];
-}
-for (int i = 0; i < g_custom_mod_count; i++) {
-    if (g_custom_mods[i].frozen) ram[g_custom_mods[i].addr] = g_custom_mods[i].frozen_value;
-}
+    // Frozen stats/items: re-assert every tick so game logic (e.g.
+    // Hunger ticking down over time) can't change them.
+    for (int i = 0; i < CHEAT_STAT_COUNT; i++) {
+        if (g_stat_frozen[i]) ram[CHEAT_STATS[i].addr] = g_stat_frozen_value[i];
+    }
+    for (int i = 0; i < INVENTORY_ITEM_COUNT; i++) {
+        if (g_inv_frozen[i]) ram[INVENTORY_ITEMS[i].addr] = g_inv_frozen_value[i];
+    }
+    for (int i = 0; i < g_custom_mod_count; i++) {
+        if (g_custom_mods[i].frozen) ram[g_custom_mods[i].addr] = g_custom_mods[i].frozen_value;
+    }
 }

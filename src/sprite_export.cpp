@@ -167,43 +167,43 @@ void export_visible_sprite_clusters(const std::string& out_dir, std::set<std::st
 
 // F8: one-shot export of the sprites visible right now. F7: toggle continuous capture.
 void sprite_export_handle_hotkeys() {
-if (IsKeyPressed(KEY_F8)) {
-    FILE* sf = fopen("sprite_dump.log", "w");
-    if (sf) {
-        fprintf(sf, "spritegfx_addr_reg(0x22)=0x%04X video_regs42=0x%04X\n", video_regs[VREG_SPRITE_SEGMENT], video_regs[VREG_SPRITE_CONTROL]);
-        uint32_t sprite_addr = SPRITE_TABLE_ADDR;
-        for (int i = 0; i < 256; i++) {
-            uint16_t tile = ram[sprite_addr + i * 4 + 0];
-            if (!tile) continue;
-            int16_t x = (int16_t)ram[sprite_addr + i * 4 + 1];
-            int16_t y = (int16_t)ram[sprite_addr + i * 4 + 2];
-            uint16_t attr = ram[sprite_addr + i * 4 + 3];
-            fprintf(sf, "slot=%d tile=0x%04X x=%d y=%d attr=0x%04X prio=%d bpp=%d w=%d h=%d\n",
-                i, tile, x, y, attr, (attr & 0x3000) >> 12, attr & 0x3,
-                8 << ((attr & 0x0030) >> 4), 8 << ((attr & 0x00c0) >> 6));
+    if (IsKeyPressed(KEY_F8)) {
+        FILE* sf = fopen("sprite_dump.log", "w");
+        if (sf) {
+            fprintf(sf, "spritegfx_addr_reg(0x22)=0x%04X video_regs42=0x%04X\n", video_regs[VREG_SPRITE_SEGMENT], video_regs[VREG_SPRITE_CONTROL]);
+            uint32_t sprite_addr = SPRITE_TABLE_ADDR;
+            for (int i = 0; i < 256; i++) {
+                uint16_t tile = ram[sprite_addr + i * 4 + 0];
+                if (!tile) continue;
+                int16_t x = (int16_t)ram[sprite_addr + i * 4 + 1];
+                int16_t y = (int16_t)ram[sprite_addr + i * 4 + 2];
+                uint16_t attr = ram[sprite_addr + i * 4 + 3];
+                fprintf(sf, "slot=%d tile=0x%04X x=%d y=%d attr=0x%04X prio=%d bpp=%d w=%d h=%d\n",
+                    i, tile, x, y, attr, (attr & 0x3000) >> 12, attr & 0x3,
+                    8 << ((attr & 0x0030) >> 4), 8 << ((attr & 0x00c0) >> 6));
+            }
+            fclose(sf);
         }
-        fclose(sf);
+
+        static std::set<std::string> exported_clusters;
+        export_visible_sprite_clusters("extracted_sprites", exported_clusters);
     }
 
-    static std::set<std::string> exported_clusters;
-    export_visible_sprite_clusters("extracted_sprites", exported_clusters);
-}
-
-// Continuous live sprite capture (F7 toggles on/off). Same export
-// logic as F8 above, but re-run every rendered frame while active,
-// into its own folder + dedup set so it doesn't mix with F8's
-// one-shot output. Dedup set is cleared each time capture starts,
-// so re-toggling begins a fresh session instead of silently
-// skipping objects already seen in a previous capture.
-static std::set<std::string> live_capture_exported;
-if (IsKeyPressed(KEY_F7)) {
-    g_live_sprite_capture = !g_live_sprite_capture;
+    // Continuous live sprite capture (F7 toggles on/off). Same export
+    // logic as F8 above, but re-run every rendered frame while active,
+    // into its own folder + dedup set so it doesn't mix with F8's
+    // one-shot output. Dedup set is cleared each time capture starts,
+    // so re-toggling begins a fresh session instead of silently
+    // skipping objects already seen in a previous capture.
+    static std::set<std::string> live_capture_exported;
+    if (IsKeyPressed(KEY_F7)) {
+        g_live_sprite_capture = !g_live_sprite_capture;
+        if (g_live_sprite_capture) {
+            live_capture_exported.clear();
+            std::filesystem::create_directory("sprite_capture");
+        }
+    }
     if (g_live_sprite_capture) {
-        live_capture_exported.clear();
-        std::filesystem::create_directory("sprite_capture");
+        export_visible_sprite_clusters("sprite_capture", live_capture_exported);
     }
-}
-if (g_live_sprite_capture) {
-    export_visible_sprite_clusters("sprite_capture", live_capture_exported);
-}
 }

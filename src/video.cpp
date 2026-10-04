@@ -263,166 +263,166 @@ void draw_sprites(Color* framebuffer, int fb_w, int margin_l, int target_priorit
 }
 
 void video_snapshot_sprites() {
-// Snapshot the sprite table once per completed tick - the pair
-// of snapshots either side of "now" is what render interpolation
-// below blends between using the leftover sim_accumulator
-// fraction.
-g_interp_prev = g_interp_curr;
-for (int i = 0; i < SPRITE_SLOT_COUNT; i++) {
-    g_interp_curr.tile[i] = ram[SPRITE_TABLE_ADDR + i * 4 + 0];
-    g_interp_curr.x[i] = (int16_t)ram[SPRITE_TABLE_ADDR + i * 4 + 1];
-    g_interp_curr.y[i] = (int16_t)ram[SPRITE_TABLE_ADDR + i * 4 + 2];
-    g_interp_curr.attr[i] = ram[SPRITE_TABLE_ADDR + i * 4 + 3];
-}
-g_have_interp_snapshot = true;
+    // Snapshot the sprite table once per completed tick - the pair
+    // of snapshots either side of "now" is what render interpolation
+    // below blends between using the leftover sim_accumulator
+    // fraction.
+    g_interp_prev = g_interp_curr;
+    for (int i = 0; i < SPRITE_SLOT_COUNT; i++) {
+        g_interp_curr.tile[i] = ram[SPRITE_TABLE_ADDR + i * 4 + 0];
+        g_interp_curr.x[i] = (int16_t)ram[SPRITE_TABLE_ADDR + i * 4 + 1];
+        g_interp_curr.y[i] = (int16_t)ram[SPRITE_TABLE_ADDR + i * 4 + 2];
+        g_interp_curr.attr[i] = ram[SPRITE_TABLE_ADDR + i * 4 + 3];
+    }
+    g_have_interp_snapshot = true;
 }
 
 // Builds the RGBA framebuffer for this frame. sim_fraction is how far (0..1) we are between the last
 // two simulation ticks, used to interpolate sprite positions when interpolation is enabled.
 void render_game_frame(Color* framebuffer, double sim_fraction) {
-// Render interpolation: temporarily substitute blended sprite
-// positions in place of the real (current-tick) values, build the
-// framebuffer with draw_page/draw_sprites completely unchanged, then
-// restore the real values immediately after - same "substitute, use,
-// restore" shape used elsewhere in this file (e.g. frozen stats),
-// safe here since it's plain data, no code execution involved.
-uint16_t saved_sprite_xy[SPRITE_SLOT_COUNT * 2];
-bool did_interp_substitute = g_interp_enabled && g_have_interp_snapshot;
-if (did_interp_substitute) {
-    for (int i = 0; i < SPRITE_SLOT_COUNT; i++) {
-        saved_sprite_xy[i * 2 + 0] = ram[SPRITE_TABLE_ADDR + i * 4 + 1];
-        saved_sprite_xy[i * 2 + 1] = ram[SPRITE_TABLE_ADDR + i * 4 + 2];
-    }
-
-    float alpha = (float)sim_fraction;
-    if (alpha < 0.0f) alpha = 0.0f;
-    if (alpha > 1.0f) alpha = 1.0f;
-
-    for (int i = 0; i < SPRITE_SLOT_COUNT; i++) {
-        // Tile+attr matching, not a position-delta continuity check -
-        // confirmed by testing: the latter caused broad jitter
-        // (including on fully static objects) from an unconfirmed
-        // walk-cycle-animation-snapping theory. Don't reintroduce
-        // that without new evidence it's needed.
-        bool same_object = g_interp_curr.tile[i] != 0
-            && g_interp_curr.tile[i] == g_interp_prev.tile[i]
-            && g_interp_curr.attr[i] == g_interp_prev.attr[i];
-        int16_t ix = g_interp_curr.x[i], iy = g_interp_curr.y[i];
-        if (same_object) {
-            int16_t dx = (int16_t)(g_interp_curr.x[i] - g_interp_prev.x[i]);
-            int16_t dy = (int16_t)(g_interp_curr.y[i] - g_interp_prev.y[i]);
-            ix = (int16_t)((float)g_interp_prev.x[i] + (float)dx * alpha);
-            iy = (int16_t)((float)g_interp_prev.y[i] + (float)dy * alpha);
+    // Render interpolation: temporarily substitute blended sprite
+    // positions in place of the real (current-tick) values, build the
+    // framebuffer with draw_page/draw_sprites completely unchanged, then
+    // restore the real values immediately after - same "substitute, use,
+    // restore" shape used elsewhere in this file (e.g. frozen stats),
+    // safe here since it's plain data, no code execution involved.
+    uint16_t saved_sprite_xy[SPRITE_SLOT_COUNT * 2];
+    bool did_interp_substitute = g_interp_enabled && g_have_interp_snapshot;
+    if (did_interp_substitute) {
+        for (int i = 0; i < SPRITE_SLOT_COUNT; i++) {
+            saved_sprite_xy[i * 2 + 0] = ram[SPRITE_TABLE_ADDR + i * 4 + 1];
+            saved_sprite_xy[i * 2 + 1] = ram[SPRITE_TABLE_ADDR + i * 4 + 2];
         }
-        ram[SPRITE_TABLE_ADDR + i * 4 + 1] = (uint16_t)ix;
-        ram[SPRITE_TABLE_ADDR + i * 4 + 2] = (uint16_t)iy;
+
+        float alpha = (float)sim_fraction;
+        if (alpha < 0.0f) alpha = 0.0f;
+        if (alpha > 1.0f) alpha = 1.0f;
+
+        for (int i = 0; i < SPRITE_SLOT_COUNT; i++) {
+            // Tile+attr matching, not a position-delta continuity check -
+            // confirmed by testing: the latter caused broad jitter
+            // (including on fully static objects) from an unconfirmed
+            // walk-cycle-animation-snapping theory. Don't reintroduce
+            // that without new evidence it's needed.
+            bool same_object = g_interp_curr.tile[i] != 0
+                && g_interp_curr.tile[i] == g_interp_prev.tile[i]
+                && g_interp_curr.attr[i] == g_interp_prev.attr[i];
+            int16_t ix = g_interp_curr.x[i], iy = g_interp_curr.y[i];
+            if (same_object) {
+                int16_t dx = (int16_t)(g_interp_curr.x[i] - g_interp_prev.x[i]);
+                int16_t dy = (int16_t)(g_interp_curr.y[i] - g_interp_prev.y[i]);
+                ix = (int16_t)((float)g_interp_prev.x[i] + (float)dx * alpha);
+                iy = (int16_t)((float)g_interp_prev.y[i] + (float)dy * alpha);
+            }
+            ram[SPRITE_TABLE_ADDR + i * 4 + 1] = (uint16_t)ix;
+            ram[SPRITE_TABLE_ADDR + i * 4 + 2] = (uint16_t)iy;
+        }
+        // Background scroll is deliberately NOT interpolated (confirmed
+        // by testing - the floor visibly jittered while the sprite-
+        // interpolated player looked correct). This game streams new
+        // tile data into the edges of a toroidal tile buffer once per
+        // real tick, keyed to that tick's exact scroll position - our
+        // fractional in-between scroll values don't have correctly-
+        // streamed tile content to go with them, so smoothing the
+        // scroll register was showing mismatched edge tiles right as
+        // new columns streamed in. Sprites have no such dependency.
     }
-    // Background scroll is deliberately NOT interpolated (confirmed
-    // by testing - the floor visibly jittered while the sprite-
-    // interpolated player looked correct). This game streams new
-    // tile data into the edges of a toroidal tile buffer once per
-    // real tick, keyed to that tick's exact scroll position - our
-    // fractional in-between scroll values don't have correctly-
-    // streamed tile content to go with them, so smoothing the
-    // scroll register was showing mismatched edge tiles right as
-    // new columns streamed in. Sprites have no such dependency.
-}
 
-for (int i = 0; i < WIDE_W * NATIVE_H; i++) framebuffer[i] = Color{0, 0, 0, 0};
+    for (int i = 0; i < WIDE_W * NATIVE_H; i++) framebuffer[i] = Color{0, 0, 0, 0};
 
-for (int priority = 0; priority < 4; priority++) {
-    draw_page(framebuffer, WIDE_W, WIDE_MARGIN_L, WIDE_MARGIN_R, 2, &video_regs[VREG_PAGE2_ATTR], &video_regs[VREG_PAGE2_X_SCROLL], video_regs[VREG_PAGE2_SEGMENT], priority);
-    draw_page(framebuffer, WIDE_W, WIDE_MARGIN_L, WIDE_MARGIN_R, 1, &video_regs[VREG_PAGE1_ATTR], &video_regs[VREG_PAGE1_X_SCROLL], video_regs[VREG_PAGE1_SEGMENT], priority);
+    for (int priority = 0; priority < 4; priority++) {
+        draw_page(framebuffer, WIDE_W, WIDE_MARGIN_L, WIDE_MARGIN_R, 2, &video_regs[VREG_PAGE2_ATTR], &video_regs[VREG_PAGE2_X_SCROLL], video_regs[VREG_PAGE2_SEGMENT], priority);
+        draw_page(framebuffer, WIDE_W, WIDE_MARGIN_L, WIDE_MARGIN_R, 1, &video_regs[VREG_PAGE1_ATTR], &video_regs[VREG_PAGE1_X_SCROLL], video_regs[VREG_PAGE1_SEGMENT], priority);
 
-    draw_sprites(framebuffer, WIDE_W, WIDE_MARGIN_L, priority);
-}
-
-if (did_interp_substitute) {
-    for (int i = 0; i < SPRITE_SLOT_COUNT; i++) {
-        ram[SPRITE_TABLE_ADDR + i * 4 + 1] = saved_sprite_xy[i * 2 + 0];
-        ram[SPRITE_TABLE_ADDR + i * 4 + 2] = saved_sprite_xy[i * 2 + 1];
+        draw_sprites(framebuffer, WIDE_W, WIDE_MARGIN_L, priority);
     }
-}
+
+    if (did_interp_substitute) {
+        for (int i = 0; i < SPRITE_SLOT_COUNT; i++) {
+            ram[SPRITE_TABLE_ADDR + i * 4 + 1] = saved_sprite_xy[i * 2 + 0];
+            ram[SPRITE_TABLE_ADDR + i * 4 + 2] = saved_sprite_xy[i * 2 + 1];
+        }
+    }
 }
 
 // Uploads the framebuffer, draws it to the window with the selected filter, and (for the Crisp
 // filter) snaps the window to an integer scale. Leaves the frame open for overlay drawing.
 void present_game_frame(const Color* framebuffer, double frame_time) {
-UpdateTexture(screen_texture, framebuffer);
-BeginDrawing();
-ClearBackground(BLACK);
+    UpdateTexture(screen_texture, framebuffer);
+    BeginDrawing();
+    ClearBackground(BLACK);
 
-int sw = GetScreenWidth();
-int sh = GetScreenHeight();
-float scale = std::min((float)sw / WIDE_W, (float)sh / NATIVE_H);
-// Crisp is point-sampled (no blending at all - that's what makes it
-// "no filter"), so at a non-integer scale it's forced to make some
-// source pixels cover one more/fewer screen pixel than their
-// neighbors - not a filter artifact, just what zero interpolation
-// means when the math doesn't divide evenly. Snapping to the
-// largest integer multiple that still fits gives every native
-// pixel a perfectly uniform square block, at the cost of a thin
-// letterboxed border instead of an exact fill.
-if (g_render_filter == FILTER_CRISP && scale > 1.0f) scale = (float)(int)scale;
-float destW = WIDE_W * scale;
-float destH = NATIVE_H * scale;
-float offsetX = (sw - destW) / 2.0f;
-float offsetY = (sh - destH) / 2.0f;
+    int sw = GetScreenWidth();
+    int sh = GetScreenHeight();
+    float scale = std::min((float)sw / WIDE_W, (float)sh / NATIVE_H);
+    // Crisp is point-sampled (no blending at all - that's what makes it
+    // "no filter"), so at a non-integer scale it's forced to make some
+    // source pixels cover one more/fewer screen pixel than their
+    // neighbors - not a filter artifact, just what zero interpolation
+    // means when the math doesn't divide evenly. Snapping to the
+    // largest integer multiple that still fits gives every native
+    // pixel a perfectly uniform square block, at the cost of a thin
+    // letterboxed border instead of an exact fill.
+    if (g_render_filter == FILTER_CRISP && scale > 1.0f) scale = (float)(int)scale;
+    float destW = WIDE_W * scale;
+    float destH = NATIVE_H * scale;
+    float offsetX = (sw - destW) / 2.0f;
+    float offsetY = (sh - destH) / 2.0f;
 
-// Crisp already snaps the RENDERED content to an exact integer
-// multiple so every pixel is a uniform block - but the window
-// itself was left at whatever size it already was, so that
-// leftover fractional space still showed up as a black border.
-// Snapping the actual OS window to match removes it outright.
-// IsWindowResized() fires on every intermediate frame of a live
-// drag, not just once at the end - snapping immediately on every
-// one of those fought the drag itself, making the window unable
-// to grow past its current integer multiple (it kept getting
-// floored back mid-drag before reaching the next size up).
-// Debouncing: (re)start a short timer on every resize event, and
-// only actually snap once it counts down without being reset
-// again - i.e. once dragging has actually paused. Also fires
-// once right when switching into Crisp, and never while fullscreen
-// OR maximized (a fixed computed size makes no sense for either -
-// maximize was getting treated as just another resize, so it
-// un-maximized the window down to the snapped size, and since a
-// resize doesn't reposition the window, it stayed pinned wherever
-// maximize had left it instead of re-centering - looked like the
-// window "snapped to the corner").
-{
-    static float resize_settle_timer = -1.0f;
-    static int last_render_filter_for_resize = -1;
-    bool switched_to_crisp = (g_render_filter == FILTER_CRISP && last_render_filter_for_resize != FILTER_CRISP);
-    last_render_filter_for_resize = g_render_filter;
-    if (g_render_filter == FILTER_CRISP && !IsWindowFullscreen() && !IsWindowMaximized()) {
-        if (IsWindowResized() || switched_to_crisp) resize_settle_timer = 0.25f;
-        if (resize_settle_timer > 0.0f) {
-            resize_settle_timer -= (float)frame_time;
-            if (resize_settle_timer <= 0.0f) {
-                int snapW = (int)destW, snapH = (int)destH;
-                if (snapW > 0 && snapH > 0 && (snapW != sw || snapH != sh)) SetWindowSize(snapW, snapH);
+    // Crisp already snaps the RENDERED content to an exact integer
+    // multiple so every pixel is a uniform block - but the window
+    // itself was left at whatever size it already was, so that
+    // leftover fractional space still showed up as a black border.
+    // Snapping the actual OS window to match removes it outright.
+    // IsWindowResized() fires on every intermediate frame of a live
+    // drag, not just once at the end - snapping immediately on every
+    // one of those fought the drag itself, making the window unable
+    // to grow past its current integer multiple (it kept getting
+    // floored back mid-drag before reaching the next size up).
+    // Debouncing: (re)start a short timer on every resize event, and
+    // only actually snap once it counts down without being reset
+    // again - i.e. once dragging has actually paused. Also fires
+    // once right when switching into Crisp, and never while fullscreen
+    // OR maximized (a fixed computed size makes no sense for either -
+    // maximize was getting treated as just another resize, so it
+    // un-maximized the window down to the snapped size, and since a
+    // resize doesn't reposition the window, it stayed pinned wherever
+    // maximize had left it instead of re-centering - looked like the
+    // window "snapped to the corner").
+    {
+        static float resize_settle_timer = -1.0f;
+        static int last_render_filter_for_resize = -1;
+        bool switched_to_crisp = (g_render_filter == FILTER_CRISP && last_render_filter_for_resize != FILTER_CRISP);
+        last_render_filter_for_resize = g_render_filter;
+        if (g_render_filter == FILTER_CRISP && !IsWindowFullscreen() && !IsWindowMaximized()) {
+            if (IsWindowResized() || switched_to_crisp) resize_settle_timer = 0.25f;
+            if (resize_settle_timer > 0.0f) {
+                resize_settle_timer -= (float)frame_time;
+                if (resize_settle_timer <= 0.0f) {
+                    int snapW = (int)destW, snapH = (int)destH;
+                    if (snapW > 0 && snapH > 0 && (snapW != sw || snapH != sh)) SetWindowSize(snapW, snapH);
+                }
             }
+        } else {
+            resize_settle_timer = -1.0f;
         }
-    } else {
-        resize_settle_timer = -1.0f;
     }
-}
 
-bool use_crt = g_render_filter == FILTER_CRT;
-bool use_sharp = g_render_filter == FILTER_SHARP;
-if (use_crt) {
-    float output_size[2] = { destW, destH };
-    SetShaderValue(crt_shader, crt_output_size_loc, output_size, SHADER_UNIFORM_VEC2);
-    BeginShaderMode(crt_shader);
-} else if (use_sharp) {
-    float source_size[2] = { (float)WIDE_W, (float)NATIVE_H };
-    float output_scale[2] = { destW / WIDE_W, destH / NATIVE_H };
-    SetShaderValue(sharp_shader, sharp_source_size_loc, source_size, SHADER_UNIFORM_VEC2);
-    SetShaderValue(sharp_shader, sharp_output_scale_loc, output_scale, SHADER_UNIFORM_VEC2);
-    BeginShaderMode(sharp_shader);
-}
+    bool use_crt = g_render_filter == FILTER_CRT;
+    bool use_sharp = g_render_filter == FILTER_SHARP;
+    if (use_crt) {
+        float output_size[2] = { destW, destH };
+        SetShaderValue(crt_shader, crt_output_size_loc, output_size, SHADER_UNIFORM_VEC2);
+        BeginShaderMode(crt_shader);
+    } else if (use_sharp) {
+        float source_size[2] = { (float)WIDE_W, (float)NATIVE_H };
+        float output_scale[2] = { destW / WIDE_W, destH / NATIVE_H };
+        SetShaderValue(sharp_shader, sharp_source_size_loc, source_size, SHADER_UNIFORM_VEC2);
+        SetShaderValue(sharp_shader, sharp_output_scale_loc, output_scale, SHADER_UNIFORM_VEC2);
+        BeginShaderMode(sharp_shader);
+    }
 
-DrawTexturePro(screen_texture, Rectangle{0, 0, (float)WIDE_W, (float)NATIVE_H}, Rectangle{offsetX, offsetY, destW, destH}, Vector2{0, 0}, 0.0f, WHITE);
+    DrawTexturePro(screen_texture, Rectangle{0, 0, (float)WIDE_W, (float)NATIVE_H}, Rectangle{offsetX, offsetY, destW, destH}, Vector2{0, 0}, 0.0f, WHITE);
 
-if (use_crt || use_sharp) EndShaderMode();
+    if (use_crt || use_sharp) EndShaderMode();
 }

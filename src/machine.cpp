@@ -103,16 +103,16 @@ void check_video_irq() {
 // Counts down the emulated hardware watchdog once per 1/60s tick; if the ROM armed it and stopped
 // feeding it, performs the CPU reset real hardware would (see memory_write16, 0x3D20/0x3D24).
 void watchdog_tick() {
-if (watchdog_enabled) {
-    watchdog_frames_left--;
-    if (watchdog_frames_left <= 0) {
-        memset(ram, 0, sizeof(ram));
-        memset(io, 0, sizeof(io));
-        memset(video_regs, 0, sizeof(video_regs));
-        audio_reset();
-        cpu_ptr->device_reset();
-        watchdog_enabled = false;
-        watchdog_frames_left = 0;
+    if (watchdog_enabled) {
+        watchdog_frames_left--;
+        if (watchdog_frames_left <= 0) {
+            memset(ram, 0, sizeof(ram));
+            memset(io, 0, sizeof(io));
+            memset(video_regs, 0, sizeof(video_regs));
+            audio_reset();
+            cpu_ptr->device_reset();
+            watchdog_enabled = false;
+            watchdog_frames_left = 0;
+        }
     }
-}
 }

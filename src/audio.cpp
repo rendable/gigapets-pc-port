@@ -843,11 +843,11 @@ void audio_queue_feed_stream(AudioStream stream) {
 // cpu.step() call see each beat/IRQ promptly and
 // individually, the same way real silicon does.
 void audio_run_cycles(long cycles_this_instr) {
-audio_cycle_debt += (double)cycles_this_instr;
-while (audio_cycle_debt >= 384.0) {
-    audio_cycle_debt -= 384.0;
-    int16_t one_sample[2];
-    generate_audio_frame(one_sample, 1);
-    audio_queue_push(one_sample, 1);
-}
+    audio_cycle_debt += (double)cycles_this_instr;
+    while (audio_cycle_debt >= 384.0) {
+        audio_cycle_debt -= 384.0;
+        int16_t one_sample[2];
+        generate_audio_frame(one_sample, 1);
+        audio_queue_push(one_sample, 1);
+    }
 }

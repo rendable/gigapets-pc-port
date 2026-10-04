@@ -219,13 +219,13 @@ void rom_hooks_after_step(unsp_20_device& cpu) {
 
 // Advances the F9 test-menu unlock sequence by one 1/60s tick.
 void test_menu_tick() {
-if (g_test_menu_seq_active) {
-    g_test_menu_seq_frame++;
-    // Safety cap in case the chime never fires for some reason -
-    // the normal end-of-sequence path is rel>=64 in the GPIO
-    // override above.
-    if (g_test_menu_seq_frame >= 900) g_test_menu_seq_active = false;
-}
+    if (g_test_menu_seq_active) {
+        g_test_menu_seq_frame++;
+        // Safety cap in case the chime never fires for some reason -
+        // the normal end-of-sequence path is rel>=64 in the GPIO
+        // override above.
+        if (g_test_menu_seq_frame >= 900) g_test_menu_seq_active = false;
+    }
 }
 
 // Opt-in hidden test-menu auto-unlock. Forces a real reset (same
@@ -235,14 +235,14 @@ if (g_test_menu_seq_active) {
 // g_test_menu_seq_active GPIO override and the full_pc()==0x3C9E8
 // RAM-arm hook for the two halves of this.
 void test_menu_unlock_begin() {
-memcpy(g_test_mode_eeprom_backup, eeprom_data, sizeof(eeprom_data));
-g_test_mode_backup_valid = true;
-memset(ram, 0, sizeof(ram));
-memset(io, 0, sizeof(io));
-memset(video_regs, 0, sizeof(video_regs));
-audio_reset();
-cpu_ptr->device_reset();
-g_test_menu_seq_active = true;
-g_test_menu_seq_frame = 0;
-g_test_menu_chime_frame = -1;
+    memcpy(g_test_mode_eeprom_backup, eeprom_data, sizeof(eeprom_data));
+    g_test_mode_backup_valid = true;
+    memset(ram, 0, sizeof(ram));
+    memset(io, 0, sizeof(io));
+    memset(video_regs, 0, sizeof(video_regs));
+    audio_reset();
+    cpu_ptr->device_reset();
+    g_test_menu_seq_active = true;
+    g_test_menu_seq_frame = 0;
+    g_test_menu_chime_frame = -1;
 }
