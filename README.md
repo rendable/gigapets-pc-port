@@ -6,11 +6,14 @@ A cycle-accurate PC port of the Giga Pets Explorer TV game. It runs the original
 
 > Windows only for now. This is an unofficial fan project, not affiliated with or endorsed by the original publisher.
 
-## Quick start (prebuilt)
+## Quick start (prebuilt, no build needed)
 
-1. Download the latest release zip and extract it anywhere.
-2. Rename your ROM file to `rom.u7` and place it in `resources\data\`.
-3. Run `GigaPetsPC.exe`.
+1. Go to the [Releases](../../releases) page and download the latest `GigaPetsPC_dist.zip`.
+2. Extract it anywhere.
+3. Rename your ROM file to `rom.u7` and place it in `resources\data\`.
+4. Run `GigaPetsPC.exe`.
+
+Prefer to build it yourself? See [Building from source](#building-from-source) below.
 
 ## Controls
 
@@ -50,14 +53,34 @@ More features are planned.
 
 ## Building from source
 
-Requires Windows, CMake 3.15+ and Visual Studio (MSVC) with the C++ workload. raylib 6.0 is downloaded automatically.
+**You need:**
+
+- Windows 10 or 11 (64-bit)
+- [Visual Studio](https://visualstudio.microsoft.com/downloads/) 2022 or newer, or just the free **Build Tools for Visual Studio**, with the **Desktop development with C++** workload installed
+- [CMake](https://cmake.org/download/) 3.25 or newer (add it to your PATH during install)
+- [Git](https://git-scm.com/downloads) (or download the source as a zip from GitHub)
+- An internet connection for the first build, which downloads raylib 6.0 automatically (about 50 MB)
+
+**Steps:**
 
 ```
+git clone <this repo's URL>
+cd <repo folder>
 cmake -S . -B build
 cmake --build build --config Release
 ```
 
-The exe lands in `build\Release\` with `resources\` copied next to it. Put your `rom.u7` in `build\Release\resources\data\`.
+Run these in any terminal (PowerShell, Command Prompt, or Git Bash). The first build takes a few minutes.
+
+**Result:** `build\Release\GigaPetsPC.exe`, with the `resources\` folder copied next to it automatically. Put your `rom.u7` in `build\Release\resources\data\` and run it. Your save file and settings are stored in that same `resources\data\` folder.
+
+The exe is self-contained (the C++ runtime is linked in), so you can copy the whole `build\Release` folder anywhere.
+
+**Troubleshooting:**
+
+- *"No CMAKE_CXX_COMPILER could be found"*: the C++ workload isn't installed. Re-run the Visual Studio installer and add **Desktop development with C++**.
+- *`cmake` not found*: install CMake and reopen your terminal so the PATH updates.
+- *raylib download fails*: check your internet connection and re-run the configure step.
 
 ## Credits and license
 
