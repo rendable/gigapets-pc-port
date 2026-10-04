@@ -1,5 +1,16 @@
 # Giga Pets Explorer - PC Port
 
+> ## ⚠️ AI-assisted project - please read
+>
+> Giga Pets Explorer is a very niche, obscure system with essentially no public documentation,
+> tooling, or existing source code to build on. Because of that, **AI was used heavily throughout
+> this project**: to help reverse engineer the ROM, to write and refactor most of the code, and to
+> write the documentation. The author directed the work and tested it in the game.
+>
+> Treat it accordingly: there will be rough edges and bugs, and the ROM findings in `docs/` are
+> reverse-engineering notes that may contain mistakes. Check things yourself before relying on them,
+> and bug reports and fixes are very welcome.
+
 A cycle-accurate PC port of the Giga Pets Explorer TV game. It runs the original ROM on a CPU core and SPG2xx video/audio emulation taken from [MAME](https://www.mamedev.org/), with [raylib](https://www.raylib.com/) for rendering and input.
 
 **You must supply your own legally-owned ROM.** No game data is included in this repository.
