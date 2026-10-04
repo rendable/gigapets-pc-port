@@ -185,7 +185,7 @@ static const uint16_t LOCATION_ID_ADDR = 0x1AA4;
 // toArea) at the moment of transition). Position (x,y) is that door
 // object's own world position, pulled from the interactable-object table
 // (ROM 0x6BFD-area-indexed, confirmed reliable via 6 separate live
-// cross-checks this session, including this exact door set). Direct
+// cross-checks during development, including this exact door set). Direct
 // connections only, v1 scope - if the target area isn't directly reachable
 // from the player's current area, no entry exists here.
 struct DoorLink { uint16_t fromArea, toArea; int16_t x, y; };
@@ -2017,7 +2017,7 @@ bool g_have_last_player_pos = false;
 // no such hardware. Everything below is a byte-verified reconstruction of
 // the real spawn RAM effects (InitMiniPetZapAnimation @ 0x045ed0 +
 // PlayMiniPetZapAnimAlt @ 0x046667 + PlaySpriteAnimation @ 0x04dc51, all
-// traced via live decompile+disassembly this session), replicated as
+// traced via live decompile+disassembly during development), replicated as
 // direct data writes rather than an injected CPU call - the previous
 // attempt at a live call corrupted rendering via `ds:`-relative addressing
 // context a synthetic call can't reproduce (see prior investigation notes).
@@ -3115,7 +3115,7 @@ void memory_write16(uint32_t addr, uint16_t data) {
         // this port never implemented these two registers at all, so
         // the countdown never started and that reset never happened,
         // which is the actual root cause of the Quit-freeze investigated
-        // this session. watchdog_enabled/watchdog_frames_left already
+        // during development. watchdog_enabled/watchdog_frames_left already
         // existed as dead scaffolding for exactly this (decrement-and-
         // reset logic already implemented in the main loop) - just never
         // wired to a real trigger before now.
@@ -3775,39 +3775,16 @@ int main() {
                     force_r1_sentinel = true;
                 }
 
-                // MYSTERY ISLAND ACCESS - TABLED, not fixed. Two theories
-                // for the real "let the player travel" gate were both
-                // disproven via live ground-truth tracing (not just static
-                // analysis) this session:
-                //   1. g_miniPetTrackingFlag/IsMiniPetTrackingEnabled
-                //      (0x1980/0x04698d) - traced every distinct real caller
-                //      during both a blocked and a successful attempt; all
-                //      were already-known, unrelated call sites (dialogue-
-                //      denial bookkeeping in Game_ProcessTick etc.), none
-                //      newly triggered by the travel attempt itself.
-                //   2. TickMiniPetCartridgeCheckSequence's hardware GPIO
-                //      check (0x3d01 & 0x10) at ROM 0x015fc0-0x015fc4 - a
-                //      real, verified code path (byte-for-byte confirmed
-                //      against raw disassembly), but a PC tracer on its
-                //      entry/gate addresses never fired during either
-                //      attempt - this code simply isn't reached for this
-                //      interaction, despite plausible-sounding surrounding
-                //      analysis (from an external agent) claiming it's
-                //      reached via Pet_RunCurrentAction's activity dispatch;
-                //      re-checking that function directly found no such
-                //      dispatch logic where claimed.
-                // The real gate is still unknown. Confirmed workaround:
-                // spawn any minipet via the mod menu before traveling - it
-                // satisfies whatever the actual (unfound) check is.
-                //
-                // TEMP DEBUG: log every real per-tick HandlePetStageEvents
-                // call (ROM 0x01308A - confirmed via decompile to be the
-                // actual per-tick handler, not a one-time room-load call)
-                // while investigating the Mystery Island gate. Captures the
-                // raw tracking flag, current area, and player position each
-                // call so a "spawn mid-visit, blocked" run can be diffed
-                // against a "reload, works" run. Safe to remove once the
-                // gate is found.
+                // KNOWN ISSUE - Mystery Island travel: the dock trigger only
+                // works if a minipet was already tracked when the room last
+                // loaded (g_activeStoryObjectId, ram[0x1AA5], must read 0x68
+                // there). Spawning a minipet from the Mod Menu mid-visit does
+                // not retroactively update it, so the player has to leave and
+                // re-enter the area (or go in and out of a building) first.
+                // A real fix needs LoadRoom's per-area argument semantics
+                // worked out (3 args beyond room id + position are not yet
+                // understood).
+
                 // Real hidden test-menu unlock, found by a user on real
                 // hardware/MAME (not something we're bypassing - this is a
                 // genuine dev-debug gate baked into the ROM). Real MAME
