@@ -19,14 +19,9 @@ uint32_t eeprom_shift = 0;
 int eeprom_address = 0;
 
 void eeprom_load() {
-    // A real, never-written 93C66 reads back as all-1 bits (0xFFFF per word)
-    // - the electrical erased state, not zero. The ROM's "is there a valid
-    // save, or should I run first-time new-pet setup" check almost certainly
-    // keys off that blank signature. Defaulting this array to C++'s implicit
-    // all-zero for a brand new save file would make it look like an
-    // existing-but-garbage save instead of a blank one, sending the ROM down
-    // an unintended code path - a strong candidate for the wrong-spawn/
-    // already-sick/stuck-on-new-game symptoms.
+    // A never-written 93C66 reads back as all 1s (0xFFFF per word), the erased state. The ROM's
+    // "valid save, or first-time setup?" check keys off that blank signature, so a missing save
+    // file must start as 0xFF, not zero (zero looks like a corrupt existing save).
     memset(eeprom_data, 0xFF, sizeof(eeprom_data));
     FILE* f = fopen(app_path("resources/data/gigapets_save.eep").c_str(), "rb");
     if (f) { fread(eeprom_data, sizeof(uint16_t), 256, f); fclose(f); }
@@ -103,17 +98,10 @@ void eeprom_clk_write(bool state) {
         }
         case EE_READING:
             if (eeprom_bits_accum % 16 == 0) {
-                // Real 93C66 sequential-read: as long as the host keeps
-                // clocking past one word's 16 bits (CS still held), the chip
-                // auto-increments its internal address register and streams
-                // the NEXT word - no new start/opcode/address needed. This
-                // never advanced eeprom_address, so any read spanning more
-                // than one word (common - e.g. reading many packed save
-                // fields in one continuous session) just re-read the FIRST
-                // word forever. Fields that happened to fit inside that
-                // first word came out correct; anything landing in a later
-                // word (e.g. the pet illness ID, read last in an 8-word run)
-                // silently got garbage from the wrong, un-advanced word.
+                // Sequential read: while the host keeps clocking past a word's 16 bits with CS held, the
+                // real chip auto-increments its address and streams the next word, with no new
+                // start bit/opcode/address. Without advancing here, a multi-word read kept returning
+                // the first word and later fields came out as garbage.
                 if (eeprom_bits_accum != 0) eeprom_address = (eeprom_address + 1) & 0xFF;
                 uint16_t val = (eeprom_address < 256) ? eeprom_data[eeprom_address] : 0xFFFF;
                 eeprom_shift = ((uint32_t)val) << 16;

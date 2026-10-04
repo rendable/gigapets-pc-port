@@ -2,6 +2,11 @@
 // buffer feeding raylib. Ported from MAME (src/devices/machine/spg2xx_audio.cpp,
 // BSD-3-Clause, Ryan Holtz / Jonathan Gevaryahu; src/devices/sound/imaadpcm.cpp,
 // BSD-3-Clause, Andrew Gardner / Aaron Giles).
+//
+// Register map (CPU addresses): 0x3000-0x31FF per-channel registers (audio_r/audio_w), 0x3200-0x33FF
+// per-channel phase/pitch registers (audio_phase_r/audio_phase_w), 0x3400-0x341F global control
+// registers (audio_ctrl_w). Sample, loop and envelope addresses are full 22-bit values the game
+// assembles in these registers and are read through the flat memory_read16().
 
 #include "common.h"
 
@@ -640,14 +645,9 @@ void audio_phase_w(uint32_t offset, uint16_t data) {
     // bounds even if the game ever addresses a phantom upper channel.
     const uint16_t channel = ((offset & 0x01f0) >> 4) & 0xF;
 
-    // Ported from spg2xx_audio_device::audio_phase_w (mame/src/devices/
-    // machine/spg2xx_audio.cpp): every offset actually stores, not just
-    // PHASE_HIGH - some ROM code writes a phase word and then busy-spins
-    // reading it back until the readback matches, which hangs forever if
-    // the write silently did nothing. PHASE_HIGH/PHASE writes also derive
-    // the channel's real playback rate from the phase value - the one place
-    // audio_channel_rate[] actually gets set, so this was also why nothing
-    // played.
+    // Ported from spg2xx_audio_device::audio_phase_w. Every offset really stores (some ROM code
+    // writes a phase word and spins reading it back until it matches), and PHASE/PHASE_HIGH writes
+    // derive the channel's playback rate - the only place audio_channel_rate[] is set.
     switch (offset & AUDIO_CHAN_OFFSET_MASK) {
         case AUDIO_PHASE_HIGH:
             audio_phase_regs[offset] = data & AUDIO_PHASE_HIGH_MASK;
@@ -735,16 +735,10 @@ void audio_ctrl_w(uint32_t offset, uint16_t data) {
             break;
         }
         case AUDIO_CHANNEL_STOP: {
-            // ROOT CAUSE of total silence: this register is write-1-to-CLEAR
-            // (real hardware/MAME's audio_ctrl_w), not a plain overwrite.
-            // Several places in our own code latch a channel's stop bit when
-            // its one-shot sample finishes (audio_fetch_sample et al); with
-            // no case here, this fell into the generic `default:` plain
-            // overwrite below, so a stop bit could never actually be
-            // cleared once set - CHANNEL_ENABLE's own handler explicitly
-            // skips restarting a channel while its stop bit is set, so
-            // every channel permanently died the first time it ever
-            // finished a sample, until nothing could play at all.
+            // Write-1-to-clear, like real hardware. Channels latch their stop bit when a one-shot
+            // sample ends, and CHANNEL_ENABLE refuses to restart a channel while its stop bit is
+            // set - so a plain overwrite here left every channel permanently dead after its first
+            // sample.
             uint16_t old = audio_ctrl_regs[offset];
             audio_ctrl_regs[offset] &= ~data;
             uint16_t changed = old ^ audio_ctrl_regs[offset];
@@ -772,13 +766,9 @@ static int g_audio_queue_head = 0; // next write position (frames)
 static int g_audio_queue_tail = 0; // next read position (frames)
 static int g_audio_queue_count = 0; // frames currently buffered
 
-// Real hardware's audio DAC clock is derived from the same 27MHz master
-// clock as the CPU, 1 sample per 384 cycles (27000000/70312.5 = 384 exactly)
-// - and critically, ticks INTERLEAVED with CPU execution, cycle by cycle,
-// not in a single lump sum after a whole frame's worth of instructions have
-// already run (see the cpu.step() loop, where this actually drives
-// generation - a prior wall-clock-paced batch approach here was the real
-// root cause of a ~10% slow-tempo bug).
+// CPU cycles not yet converted into an output sample. Real hardware derives the audio DAC clock from
+// the same 27 MHz master clock as the CPU (1 sample per 384 cycles, exactly), so samples are
+// generated interleaved with CPU execution - see audio_run_cycles.
 double audio_cycle_debt = 0.0;
 AudioStream audio_stream;
 
@@ -798,15 +788,9 @@ void audio_queue_push(const int16_t* buf, int num_frames) {
 }
 
 void audio_queue_feed_stream(AudioStream stream) {
-    // ROOT CAUSE of choppy audio: raylib's internal stream buffer is sized
-    // via SetAudioStreamBufferSizeDefault(AUDIO_STREAM_CHUNK=4096), and
-    // IsAudioStreamProcessed() only reports true once a full buffer of that
-    // size has finished playing. Handing over only 1024 frames per "ready"
-    // signal was refilling a quarter of what raylib actually needed each
-    // time, so the real output device kept running dry between top-ups even
-    // though our own software queue was sitting permanently full (confirmed
-    // via trace: queue_count pinned at max capacity the whole session).
-    // Matching this to AUDIO_STREAM_CHUNK fixes the mismatch.
+    // raylib's stream buffer holds AUDIO_STREAM_CHUNK frames and only reports "processed" once all of
+    // them have played, so each top-up must be exactly that size. Smaller top-ups let the output
+    // device run dry (choppy audio) even while our own queue is full.
     const int CHUNK = AUDIO_STREAM_CHUNK; // frames per UpdateAudioStream call
     while (g_audio_queue_count >= CHUNK && IsAudioStreamProcessed(stream)) {
         static int16_t chunk[CHUNK * 2];
@@ -820,28 +804,10 @@ void audio_queue_feed_stream(AudioStream stream) {
     }
 }
 
-// ROOT CAUSE of the ~10% slow-music tempo bug: audio used to
-// be generated in one big lump-sum batch AFTER this whole
-// cpu.step() loop finished for the frame (confirmed via
-// tempo_check.log/audio_rate_check.log that BOTH sim-tick
-// pacing and raw sample-generation RATE were already exactly
-// correct - ratio 1.0000/0.9998 - so the bug isn't a
-// throughput/pacing miscalculation at all). The real problem
-// was ORDER: ~1172 samples generate per frame, easily
-// spanning many full BEAT_BASE_COUNT cycles, so many
-// separate "beat expired" IRQ4 assertions could fire back to
-// back while the CPU wasn't running at all (it had already
-// used up its cycle budget for the frame) - the CPU would
-// only ever see "IRQ4 currently asserted" ONCE it resumed
-// next frame, coalescing what should have been several
-// separate Music_SequencerTick() calls (via IrqHandlerAudio)
-// into far fewer, under-advancing the sequencer. Generating
-// exactly one sample per 384 CPU cycles, interleaved here,
-// matches real hardware's own clock relationship (a
-// TIMER_CALLBACK_MEMBER on a genuine per-cycle-derived timer
-// in MAME, not a per-frame batch) and lets the very next
-// cpu.step() call see each beat/IRQ promptly and
-// individually, the same way real silicon does.
+// Generates audio interleaved with CPU execution: one stereo sample per 384 CPU cycles (27 MHz /
+// 70312.5 Hz), matching real hardware's clock relationship. Generating a frame's samples in one batch
+// after the CPU had used its cycle budget made several "beat expired" IRQs coalesce into one, so the
+// music sequencer advanced too slowly (~10% slow tempo). See docs/ROM_NOTES.md.
 void audio_run_cycles(long cycles_this_instr) {
     audio_cycle_debt += (double)cycles_this_instr;
     while (audio_cycle_debt >= 384.0) {

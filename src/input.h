@@ -21,15 +21,10 @@ static const GameButtonInfo GAME_BUTTONS[GAME_BUTTON_COUNT] = {
     { "Menu",         KEY_ENTER },
 };
 
-// Default (and, until rebound, current) gamepad button per GameButton, same
-// order as GAME_BUTTONS. g_gamepad_binding is the live, user-remappable
-// value the GPIO read handler (0x3D01, below) actually checks; this array
-// is only the startup default, same relationship as GAME_BUTTONS[].
-// default_key vs g_key_binding[] for the keyboard side. BTN_LEFT/RIGHT/UP/
-// DOWN also always accept the left analog stick in the GPIO handler in
-// addition to whatever button is bound - not representable as a single
-// GamepadButton, so it's not part of the binding/display, just an always-on
-// extra.
+// Default gamepad button per GameButton, in the same order as GAME_BUTTONS. g_gamepad_binding is the
+// live, remappable value that REG_IOA_DATA reads check; this is only the startup default (like
+// GAME_BUTTONS[].default_key vs g_key_binding[]). The directional buttons additionally always accept
+// the left analog stick, which isn't a single button so it isn't part of the binding.
 static const int GAME_BUTTON_GAMEPAD_DEFAULT[GAME_BUTTON_COUNT] = {
     GAMEPAD_BUTTON_LEFT_FACE_LEFT, GAMEPAD_BUTTON_LEFT_FACE_RIGHT, GAMEPAD_BUTTON_LEFT_FACE_UP, GAMEPAD_BUTTON_LEFT_FACE_DOWN,
     GAMEPAD_BUTTON_RIGHT_FACE_DOWN, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT, GAMEPAD_BUTTON_MIDDLE_RIGHT

@@ -7,16 +7,12 @@
 #include "input.h"
 #include "settings.h"
 
-// Row layout: 0 = Filter, 1 = Movement Speed, 2 = No-Clip, 3.. = CHEAT_STATS,
-// then one row per inventory category (header, togglable), then - only for
-// categories currently expanded - the flat inventory items themselves. The
-// item range always reserves space for every item regardless of expand
-// state, so a row_index numerically identifies the same item no matter
-// what's currently shown (needed for favorites/persistence to keep working
-// regardless of collapse state).
-// Controls sits first, as its own collapsible category (mirrors the
-// Inventory categories below) so the 7 button rows stay out of the way
-// until a user actually wants to remap something.
+// Row indices: a fixed numbering of every possible Mod Menu row. Controls comes first as a
+// collapsible category, then the option rows (filter, speed, no-clip, ...), then CHEAT_STATS, then
+// one header row per inventory category followed by the items, then custom mods. The item range
+// always reserves a slot for every item whether or not its category is expanded, so a row index
+// identifies the same item regardless of what is currently shown (favorites and persistence rely on
+// that).
 static const int ROW_CONTROLS_CAT = 0;
 static const int ROW_CONTROLS_START = 1;
 static const int ROW_MOD_MENU_KEY = ROW_CONTROLS_START + GAME_BUTTON_COUNT;
@@ -63,6 +59,11 @@ struct ModMenuRowRect {
                     // ROW_INVENTORY_CAT_START+c, or ROW_INVENTORY_ITEM_START+i
 };
 
+// Mod Menu layout, computed once per frame (mod_menu_update) so mouse hit-testing and drawing use
+// identical row geometry. Two panels: the main list, and a docked Favorites panel with just the
+// pinned rows. The main list can be far taller than the screen (up to 268 inventory items), so it
+// scrolls: logical_order holds every currently visible logical row in display order (respecting
+// which categories are expanded) and main_rows holds only the slice scrolled into view.
 struct ModMenuLayout {
     Rectangle main_panel;
     ModMenuRowRect main_rows[MOD_MENU_MAX_VISIBLE_ROWS];
@@ -85,7 +86,7 @@ struct ModMenuLayout {
 enum CustomAddPhase { CUSTOM_ADD_NONE, CUSTOM_ADD_ADDRESS, CUSTOM_ADD_NAME };
 
 extern ModMenuLayout g_mod_menu_layout;
-extern int g_mod_menu_scroll;
+extern int g_mod_menu_scroll;  // index into logical_order of the first visible row
 extern bool g_mod_menu_open;
 extern bool g_category_expanded[INVENTORY_CATEGORY_COUNT];
 extern int g_mod_menu_selection;

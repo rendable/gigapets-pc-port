@@ -2,16 +2,10 @@
 
 #include "common.h"
 
-// Real door-to-destination links, gathered empirically (the mechanism
-// connecting a warp-trigger object to which new area actually loads was
-// never resolved via static analysis - traced live instead: walked
-// through each door while logging (fromArea, lastActiveStoryObjectId,
-// toArea) at the moment of transition). Position (x,y) is that door
-// object's own world position, pulled from the interactable-object table
-// (ROM 0x6BFD-area-indexed, confirmed reliable via 6 separate live
-// cross-checks during development, including this exact door set). Direct
-// connections only, v1 scope - if the target area isn't directly reachable
-// from the player's current area, no entry exists here.
+// Door-to-destination links, gathered empirically by walking through each door and recording
+// (fromArea, door object id, toArea) at the moment of the transition. (x, y) is the door object's
+// world position from the ROM's interactable-object table. Only direct connections are listed;
+// find_route_door chains them for multi-hop routes.
 struct DoorLink { uint16_t fromArea, toArea; int16_t x, y; };
 
 static const DoorLink DOOR_LINKS[] = {
@@ -94,17 +88,11 @@ bool find_route_door(uint16_t fromArea, uint16_t toArea, int16_t playerX, int16_
 }
 
 void quest_arrow_draw() {
-    // Quest Arrow: points toward the door leading to the current
-    // quest's delivery-target area (g_contentPoolTable/0x1E68 - despite
-    // Ghidra's inherited "QuestGiver" naming, this is the actual
-    // delivery target, set once at quest-roll time and stable through
-    // the whole quest, correctly distinguishing "bring to me" from
-    // "bring to someone else" per real testing). 0x1E4F!=0xFFFF matches
-    // the real game's own gate for "is a quest objective active" (same
-    // check DrawQuestTurnInSummary uses before showing its own text).
-    // v1: direct area connections only, via the empirically-gathered
-    // DOOR_LINKS table - no arrow shown if the target area isn't
-    // directly reachable from here, or if already in the target area.
+    // Quest arrow (work in progress): points at the door leading toward the current quest's delivery
+    // target. The target is the NPC at QUEST_TARGET_POOL_IDX_ADDR (set once when the quest is
+    // rolled, so it correctly distinguishes "bring to me" from "bring to someone else"), and a quest
+    // is active when QUEST_OBJECTIVE_FLAG_ADDR != 0xFFFF (the same check the game uses for its own
+    // turn-in summary). No arrow if the target area is unreachable via DOOR_LINKS or we're already there.
     if (g_quest_arrow_enabled) {
         bool gate = ram[GAME_STATE_ADDR] == GAME_STATE_IN_ROOM && ram[QUEST_OBJECTIVE_FLAG_ADDR] != 0xFFFF;
         uint16_t pool_idx = ram[QUEST_TARGET_POOL_IDX_ADDR];
@@ -119,18 +107,9 @@ void quest_arrow_draw() {
                 float angle = atan2f((float)(door_y - py), (float)(door_x - px));
                 float acx = WIDE_W / 2.0f, acy = 36.0f;
                 float c = cosf(angle), s = sinf(angle);
-                // DrawTriangle/DrawTriangleFan fill would not render
-                // solid here even with culling disabled - real cause
-                // never pinned down. Angled side-pieces for the head
-                // (DrawPoly, then two angled DrawRectanglePro bars)
-                // both came out disconnected/malformed. Simplest
-                // foolproof construction: every single piece below
-                // uses the exact same rotation (angle_deg) and is
-                // placed at successive distances along that one
-                // direction line - a "staircase" of rectangles
-                // narrowing toward the tip approximates a point, with
-                // no separate angle math anywhere to get wrong or
-                // drift out of sync.
+                // Drawn as a "staircase" of rotated rectangles narrowing toward the tip, all using the
+                // same rotation and placed along one direction line. (DrawTriangle fills and angled
+                // head pieces rendered disconnected or not at all here, cause not pinned down.)
                 float angle_deg = angle * RAD2DEG;
                 float shaft_len = 14.0f, shaft_thick = 6.0f;
                 DrawRectanglePro(Rectangle{ acx, acy, shaft_len, shaft_thick }, Vector2{ 0, shaft_thick / 2 }, angle_deg, WHITE);

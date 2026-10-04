@@ -3,30 +3,19 @@
 
 #include "base.h"
 
-// Movement speed: applied as a post-frame delta amplification (see the main
-// loop, right after the CPU's per-frame instruction budget is spent) rather
-// than by patching game logic - the game's own ~7 collision-checked
-// sub-steps per frame already moved the player once this frame; we just
-// scale that observed delta up further. This means the "extra" portion of
-// movement at speeds above 1x does not get its own collision check until
-// the *next* frame's normal movement re-evaluates from the new position -
-// an acceptable tradeoff for a cheat, but it can clip slightly into walls
-// at higher multipliers before the game's own collision catches up.
+// Movement speed: applied as a post-tick delta amplification (player_mods_tick) rather than by
+// patching game logic. The game's own collision-checked sub-steps already moved the player once this
+// tick; we scale that observed delta up. The extra distance gets no collision check until the next
+// tick re-evaluates from the new position, so high multipliers can clip slightly into walls.
 static const int MOVEMENT_SPEED_LEVELS[] = { 1, 2, 3, 4, 5, 6, 7, 8 };
 
 static const int MOVEMENT_SPEED_LEVEL_COUNT = sizeof(MOVEMENT_SPEED_LEVELS) / sizeof(MOVEMENT_SPEED_LEVELS[0]);
 
-// Room/area transitions reposition the player to a new spawn point in a
-// single frame - a large, deliberate jump, not organic walking - and must
-// not be amplified the same way (doing so was flinging the player outside
-// the new room's valid bounds, getting them stuck). Location ID is coarse
-// (it tracks broad unlockable game regions - Downtown, Beach, etc, per the
-// CT table's dropdown - not individual rooms/buildings, so it won't catch
-// every building-entry transition), but the raw per-tick magnitude clamp
-// below is the real backstop: any single-tick delta big enough to matter
-// (a teleport-style reposition) is far larger than this threshold, so it
-// gets zeroed regardless of whether a location-ID change also fired.
-static const int MOVEMENT_TELEPORT_THRESHOLD = 32; // raw per-frame delta beyond this is treated as a non-organic jump
+// Room changes reposition the player in a single tick (a deliberate jump, not walking) and must not
+// be amplified, or the player is flung outside the new room's bounds. The location id is coarse
+// (broad regions, not individual buildings), so any per-tick delta above this threshold is also
+// treated as a non-organic jump and zeroed.
+static const int MOVEMENT_TELEPORT_THRESHOLD = 32;
 extern int g_movement_speed_idx;
 extern int16_t g_last_player_x;
 extern int16_t g_last_player_y;
@@ -34,14 +23,11 @@ extern bool g_have_last_player_pos;
 extern uint16_t g_last_location_id;
 extern bool g_have_last_location_id;
 extern int g_location_change_grace_frames;
-// No-Clip: ported directly from the user's own Cheat Engine AOB-scan script
-// (3 "collision check returns 0" instruction sites, each patched so the
-// result is 1/free-space instead). Cheat Engine found these by scanning our
-// own process's raw memory - i.e. this rom[] array - so the same patterns
-// are searched here directly, word-addressed instead of byte-addressed.
-// Our CPU core runs the plain interpreter (unsp.cpp's execute_run(), not
-// the DRC recompiler in unspdrc.cpp), so there is no instruction cache to
-// invalidate - a patched rom[] word takes effect on the very next fetch.
+
+// No-Clip: three "collision check returns 0" instruction sites in the ROM, found by scanning rom[]
+// for their byte patterns (originally from a Cheat Engine AOB-scan script) and patched so the check
+// reports free space. The CPU core is a plain interpreter with no instruction cache, so a patched
+// rom[] word takes effect on the very next fetch.
 struct NoClipPatch { int32_t patch_word_addr = -1; uint16_t original_value = 0; };
 
 extern NoClipPatch g_noclip_patches[3];

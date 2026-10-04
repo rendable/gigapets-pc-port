@@ -31,34 +31,16 @@ Rectangle g_dropdown_anchor = {};
 int g_dropdown_gp_index = 0; // gamepad-highlighted option row inside the open dropdown
 int g_awaiting_keybind_for = -1; // GameButton index waiting on the next keypress to rebind, -1 = none
 
-// Mod menu layout: computed once per frame (from input handling, before
-// rendering) into g_mod_menu_layout so both mouse hit-testing and drawing
-// use identical row geometry. Two panels: the main list (Filter/Movement
-// Speed/No-Clip/stats/inventory categories) and a docked Favorites panel
-// showing just the pinned stats/items, so favorited cheats stay reachable
-// without hunting through the full list. The main list can be far taller
-// than fits on screen once inventory categories are expanded (up to 268
-// items), so it's scrolled: logical_order holds every currently-visible
-// logical row (respecting collapse state) in display order, and main_rows
-// holds only the slice of that currently scrolled into view.
- // index into logical_order of the first visible row
-
-// Both computed once (name/value tables are static, not every frame) and
-// shared between layout and drawing - label_extra_w widens the gap before
-// the chevrons for long labels (e.g. "King's Magnificent Statue"),
-// value_extra_w widens the gap AFTER the value text for long values (e.g.
-// minipet species names, "Zapped In"/"Zapped Out") so neither overlaps the
-// chevrons. Both start at -1 (not yet computed).
+// Extra widths computed once from the (static) label and value tables and shared by layout and
+// drawing: label_extra_w widens the gap before the chevrons for long labels ("King's Magnificent
+// Statue"), value_extra_w widens the gap after long values (minipet names, "Zapped In") so
+// neither overlaps the chevrons. -1 means not yet computed.
 int s_label_extra_w = -1;
 int s_value_extra_w = -1;
 
 bool row_is_category(int row_index) { return row_index >= ROW_INVENTORY_CAT_START && row_index < ROW_INVENTORY_ITEM_START; }
 
-// Bounded at ROW_CUSTOM_CAT now that the Custom category's rows sit right
-// after Inventory in the chain - this used to have no upper bound (safe
-// back when Inventory was the last thing in the chain), which would have
-// silently misclassified every Custom row as an inventory item once
-// something was appended after it.
+// Bounded above by ROW_CUSTOM_CAT, since custom-mod rows follow the inventory items.
 bool row_is_inv_item(int row_index) { return row_index >= ROW_INVENTORY_ITEM_START && row_index < ROW_CUSTOM_CAT; }
 
 bool row_is_custom(int row_index) { return row_index >= ROW_CUSTOM_START && row_index < ROW_CUSTOM_START + g_custom_mod_count; }

@@ -13,12 +13,10 @@ Texture2D hud_money_a, hud_money_b, hud_halo, hud_pitchfork, hud_star_a, hud_sta
 Font g_ui_font;
 bool g_ui_font_is_custom = false; // only true if LoadFontEx succeeded - UnloadFont on GetFontDefault()'s result would be wrong
 
-// Maps the fixed virtual UI space (WIDE_W*DEFAULT_WINDOW_SCALE x
-// NATIVE_H*DEFAULT_WINDOW_SCALE) that all overlay UI (mod menu, stat HUD,
-// FPS counter) is laid out in to whatever the real window/fullscreen size
-// currently is - recomputed once per frame (see the main loop), used both
-// for drawing (BeginMode2D(g_hud_cam)) and for converting real mouse
-// coordinates into that same space for hit-testing.
+// Maps the fixed virtual UI space (WIDE_W * DEFAULT_WINDOW_SCALE by NATIVE_H * DEFAULT_WINDOW_SCALE)
+// that all overlay UI (Mod Menu, stat HUD, FPS counter) is laid out in to the real window size.
+// Recomputed every frame by ui_update_hud_camera(); used both for drawing (BeginMode2D(g_hud_cam))
+// and for converting mouse coordinates into the same space for hit-testing.
 Camera2D g_hud_cam;
 
 void ui_draw_text(const char* text, int x, int y, int font_size, Color color) {

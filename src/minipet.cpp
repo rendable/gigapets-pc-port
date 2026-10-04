@@ -29,21 +29,12 @@ void spawn_minipet(int species_idx) {
     ram[MINIPET_TRAIL_READ_IDX_ADDR] = MINIPET_TRAIL_SLOT_COUNT - 1;
     ram[MINIPET_TRAIL_WRITE_IDX_ADDR] = 0;
 
-    // Animation struct: field 0 (animId) MUST be the sentinel 0x7B, not a
-    // species-specific frame ID - confirmed via live MAME testing + full
-    // disassembly of FeedOrAdvanceMiniPet (ROM 0x046172), which runs every
-    // single tick once tracking is nonzero and treats "struct[0] != 0x7B" as
-    // an unhandled found-item-reaction event: it overwrites the struct with
-    // its own animId=0x7B (exact match to what was observed clobbering this
-    // struct one tick after spawning), resets g_currentRoomId, and rewrites
-    // the tracking flag - a cascade that ends in the animation getting
-    // force-despawned. The species-specific frame ID (from
-    // MINIPET_ANIM_FRAME_IDS) is only valid transiently during the brief
-    // real zap-in ceremony screen (EnterActivityAndRunLoop), which hands off
-    // with the struct already reset to this sentinel before normal per-tick
-    // logic (TickMiniPetZapAndFollowState et al) ever sees it - skipping
-    // straight to the sentinel here skips that one-time visual but lands
-    // directly in the stable, correctly-tracked state.
+    // Animation struct field 0 must start as the sentinel 0x7B, not a species frame id.
+    // FeedOrAdvanceMiniPet (ROM 0x046172) runs every tick once tracking is nonzero and treats any
+    // other value as an unhandled found-item reaction, which cascades into a forced despawn. The
+    // species frame id is only valid during the real zap-in ceremony screen, which hands off with
+    // the struct already reset to this sentinel; skipping to it here skips that one-time visual but
+    // lands directly in the stable tracked state. See docs/ROM_NOTES.md, "Minipets".
     ram[MINIPET_ANIM_STRUCT_ADDR + 0] = 0x7B;
     ram[MINIPET_ANIM_STRUCT_ADDR + 1] = 2;
     ram[MINIPET_ANIM_STRUCT_ADDR + 2] = 0;
@@ -55,28 +46,20 @@ void spawn_minipet(int species_idx) {
     ram[MINIPET_ANIM_STRUCT_ADDR + 8] = 0;
     ram[MINIPET_ANIM_STRUCT_ADDR + 9] = 0;
 
-    // g_currentRoomId doubles as the species index - confirmed ground truth
-    // via PlayMiniPetAnimForRoom/PlayMiniPetWalkAnim's decompile (not
-    // PlayMiniPetZapAnimAlt as originally guessed - that table is never
-    // actually reached since flag never passes through state 3 here).
+    // This ROM variable doubles as the species index (read by PlayMiniPetAnimForRoom and
+    // PlayMiniPetWalkAnim).
     ram[GAME_CURRENT_ROOM_ID_ADDR] = (uint16_t)species_idx;
 
-    // Simulate "handheld physically connected" - harmless to keep even
-    // though the real despawn fix turned out to be the sentinel-gate patch
-    // in the main tick loop, not this flag.
+    // Simulate "accessory handheld physically connected".
     ram[MINIPET_LINK_AVAILABLE_ADDR] = 1;
 
     ram[MINIPET_TRACKING_FLAG_ADDR] = 2; // matches InitMiniPetZapAnimation's own real write exactly
 }
 
-// Replicates TickMiniPetZapAndFollowState's own trail-buffer write exactly
-// (ROM 0x046267-0x046289: decrement writeIndex, wrap 0->0x3b, write
-// {X, Y-6, poseId=0}) so the movement-speed cheat can backfill the
-// intermediate steps a real normal-speed walk would have recorded. Without
-// this, the amplified per-tick jump gets recorded as a single trail entry,
-// and since the follower always trails by a fixed NUMBER of slots (not a
-// fixed distance), each slot then represents proportionally more real
-// distance - the pet visibly lags farther behind the faster you move.
+// Replicates TickMiniPetZapAndFollowState's own trail-buffer write (ROM 0x046267-0x046289:
+// decrement the write index, wrap 0 -> 0x3B, store {X, Y-6, pose 0}) so the movement-speed mod can
+// backfill the steps a normal-speed walk would have recorded. The follower trails by a fixed number
+// of slots, so without this each slot covers more distance and the pet lags farther behind.
 void minipet_trail_record_step(int16_t x, int16_t y) {
     uint16_t write_index = ram[MINIPET_TRAIL_WRITE_IDX_ADDR];
     write_index = (write_index == 0) ? 0x3b : (write_index - 1);

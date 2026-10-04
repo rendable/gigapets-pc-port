@@ -2,21 +2,12 @@
 
 #include "common.h"
 
-// Sprite PNG extractor: MAME's generic sprite viewer can't decode this
-// driver's tiles (variable bpp/width/height read from each sprite's own
-// attr word at runtime, not a static gfx_layout MAME's tool expects) -
-// but this port already has a byte-for-byte-correct decode of that same
-// variable format (draw_sprites above, ported from spg_renderer_device).
-// A single on-screen object (a tree, a character) is usually built from
-// several adjacent hardware sprite tiles, not one big tile - exporting
-// each tile independently scatters one object across many small files.
-// This groups active sprites into clusters by bounding-box adjacency
-// (touching or within a few pixels), then composites each cluster onto
-// one canvas at the tiles' correct relative offsets, honoring flip -
-// i.e. reconstructs the actual on-screen object as a single image.
-// Shared by the one-shot F8 export and the continuous F7 capture mode,
-// each with their own output folder and dedup set so the two don't
-// interfere with each other.
+// Exports every on-screen object as a PNG. One object (a tree, a character) is usually built from
+// several adjacent hardware sprite tiles, so active sprites are grouped into clusters by bounding-box
+// adjacency and each cluster is composited onto one canvas at the tiles' relative offsets, honoring
+// flip. The decode reuses draw_sprites' variable bpp/width/height handling (MAME's generic sprite
+// viewer can't decode this format). Shared by the one-shot F8 export and the continuous F7 capture,
+// each with its own output folder and dedup set.
 void export_visible_sprite_clusters(const std::string& out_dir, std::set<std::string>& exported_clusters) {
     struct ExtractSprite { uint16_t tile, attr; int x, y; uint32_t w, h; int priority; int slot; };
     std::vector<ExtractSprite> active;
@@ -115,14 +106,9 @@ void export_visible_sprite_clusters(const std::string& out_dir, std::set<std::st
             }
         }
 
-        // Dedup on the actual composited pixels, not tile/attr/position -
-        // some idle animations (e.g. a palette-cycling color effect) keep
-        // the same tile/attr/x/y every frame and only change which colors
-        // the palette RAM at this offset currently holds, which the old
-        // pre-composite key couldn't see at all (captured exactly one
-        // frame then silently skipped every later one as a "duplicate").
-        // FNV-1a over the canvas bytes catches any visually distinct frame
-        // regardless of what changed under the hood to produce it.
+        // Dedup on the composited pixels, not tile/attr/position: palette-cycling animations keep
+        // the same tile, attr and position and only change palette RAM, which a pre-composite key
+        // can't see. FNV-1a over the canvas catches any visually distinct frame.
         uint64_t hash = 1469598103934665603ULL;
         for (auto& c : canvas) {
             hash = (hash ^ c.r) * 1099511628211ULL;

@@ -191,17 +191,10 @@ void draw_sprites(Color* framebuffer, int fb_w, int margin_l, int target_priorit
             centered_x = (320 / 2) + raw_x - (int)tile_w / 2;
             centered_y = (256 / 2) - raw_y - (int)tile_h / 2;
         }
-        // Real hardware masks the (possibly negative, off-the-top-left)
-        // centered position to a 9-bit toroidal coordinate space (0-511,
-        // wider than the visible screen) and then uses it AS-IS, unsigned -
-        // ported from spg_renderer_device::draw_sprite. It is NOT sign-
-        // extended back to negative: values above 255 are legitimate large
-        // on-screen X coordinates (very much so on this port's widened
-        // 426px canvas), and the plain bounds check below already discards
-        // anything that lands off-screen either way. Re-interpreting them
-        // as negative (an earlier, wrong attempt at this same fix) made
-        // every sprite past X~256 vanish instead of draw - the "right side
-        // doesn't load" bug.
+        // Like real hardware (spg_renderer_device::draw_sprite), mask the centered position to a
+        // 9-bit toroidal coordinate (0-511) and use it unsigned. Do NOT sign-extend it back to
+        // negative: values above 255 are legitimate on-screen X coordinates (doing so made every
+        // sprite right of X~256 vanish), and the bounds check below discards off-screen ones anyway.
         int x = centered_x & 0x1ff;
         int y = centered_y & 0x1ff;
 
@@ -217,15 +210,10 @@ void draw_sprites(Color* framebuffer, int fb_w, int margin_l, int target_priorit
         palette_offset >>= nc_bpp;
         palette_offset <<= nc_bpp;
 
-        // x/y are 9-bit toroidal coordinates (0-511) on real hardware, not
-        // plain screen offsets - a sprite near the top/left edge can have a
-        // "small negative" position that masks to a large value near 511,
-        // and its rows/columns must wrap back around through 0 to appear on
-        // screen (see spg_renderer_device::draw_sprite's firstline/lastline
-        // wraparound). Re-masking each computed row/col with & 0x1ff before
-        // the bounds check reproduces that wrap; without it, sprites whose
-        // position wraps this way (a tall tree/house anchored near the top
-        // of the viewport) vanish entirely instead of wrapping into view.
+        // x/y are toroidal 9-bit coordinates, so a sprite near the top/left edge can mask to a value
+        // near 511 and its rows/columns must wrap back through 0 to appear (see
+        // spg_renderer_device::draw_sprite). Re-masking each row/col with & 0x1ff before the bounds
+        // check reproduces that; without it, tall sprites anchored near the top edge vanish.
         for (uint32_t py = 0; py < tile_h; py++) {
             int draw_y = (y + py) & 0x1ff;
             if (draw_y >= 240) continue;
@@ -317,15 +305,9 @@ void render_game_frame(Color* framebuffer, double sim_fraction) {
             ram[SPRITE_TABLE_ADDR + i * 4 + 1] = (uint16_t)ix;
             ram[SPRITE_TABLE_ADDR + i * 4 + 2] = (uint16_t)iy;
         }
-        // Background scroll is deliberately NOT interpolated (confirmed
-        // by testing - the floor visibly jittered while the sprite-
-        // interpolated player looked correct). This game streams new
-        // tile data into the edges of a toroidal tile buffer once per
-        // real tick, keyed to that tick's exact scroll position - our
-        // fractional in-between scroll values don't have correctly-
-        // streamed tile content to go with them, so smoothing the
-        // scroll register was showing mismatched edge tiles right as
-        // new columns streamed in. Sprites have no such dependency.
+        // Background scroll is deliberately NOT interpolated: the game streams new tile columns into
+        // a toroidal buffer once per real tick, keyed to that tick's exact scroll position, so an
+        // in-between scroll value shows mismatched edge tiles. Sprites have no such dependency.
     }
 
     for (int i = 0; i < WIDE_W * NATIVE_H; i++) framebuffer[i] = Color{0, 0, 0, 0};
@@ -355,40 +337,21 @@ void present_game_frame(const Color* framebuffer, double frame_time) {
     int sw = GetScreenWidth();
     int sh = GetScreenHeight();
     float scale = std::min((float)sw / WIDE_W, (float)sh / NATIVE_H);
-    // Crisp is point-sampled (no blending at all - that's what makes it
-    // "no filter"), so at a non-integer scale it's forced to make some
-    // source pixels cover one more/fewer screen pixel than their
-    // neighbors - not a filter artifact, just what zero interpolation
-    // means when the math doesn't divide evenly. Snapping to the
-    // largest integer multiple that still fits gives every native
-    // pixel a perfectly uniform square block, at the cost of a thin
-    // letterboxed border instead of an exact fill.
+    // Crisp is point-sampled, so at a non-integer scale some source pixels would cover one more
+    // screen pixel than their neighbors. Snapping to the largest integer multiple that fits gives
+    // every native pixel a uniform square block, at the cost of a thin letterbox border.
     if (g_render_filter == FILTER_CRISP && scale > 1.0f) scale = (float)(int)scale;
     float destW = WIDE_W * scale;
     float destH = NATIVE_H * scale;
     float offsetX = (sw - destW) / 2.0f;
     float offsetY = (sh - destH) / 2.0f;
 
-    // Crisp already snaps the RENDERED content to an exact integer
-    // multiple so every pixel is a uniform block - but the window
-    // itself was left at whatever size it already was, so that
-    // leftover fractional space still showed up as a black border.
-    // Snapping the actual OS window to match removes it outright.
-    // IsWindowResized() fires on every intermediate frame of a live
-    // drag, not just once at the end - snapping immediately on every
-    // one of those fought the drag itself, making the window unable
-    // to grow past its current integer multiple (it kept getting
-    // floored back mid-drag before reaching the next size up).
-    // Debouncing: (re)start a short timer on every resize event, and
-    // only actually snap once it counts down without being reset
-    // again - i.e. once dragging has actually paused. Also fires
-    // once right when switching into Crisp, and never while fullscreen
-    // OR maximized (a fixed computed size makes no sense for either -
-    // maximize was getting treated as just another resize, so it
-    // un-maximized the window down to the snapped size, and since a
-    // resize doesn't reposition the window, it stayed pinned wherever
-    // maximize had left it instead of re-centering - looked like the
-    // window "snapped to the corner").
+    // In Crisp mode, also snap the OS window itself to the integer-scale size so no black border is
+    // left. This is debounced: IsWindowResized() fires on every frame of a live drag, and snapping
+    // immediately fights the drag (the window could never grow past its current multiple). The
+    // timer restarts on each resize event and the snap happens once dragging pauses. It also runs
+    // once when switching into Crisp, and never while fullscreen or maximized (snapping a maximized
+    // window un-maximized it and left it pinned to the corner).
     {
         static float resize_settle_timer = -1.0f;
         static int last_render_filter_for_resize = -1;

@@ -36,15 +36,9 @@ void save_cheat_state() {
     fclose(f);
 }
 
-// Keyed by each stat/item's real RAM address rather than its array
-// position. The old scheme only checked that the TOTAL COUNT matched
-// before trusting raw positional data - safe against additions/removals
-// (count changes, triggering a reset) but NOT against pure reordering
-// (same count, different order), which silently misapplied old favorite/
-// freeze flags to the wrong stat when Health and Sickness were split
-// apart at the same count. Matching by address is immune to reordering,
-// insertion, or removal in any combination - a saved record for an
-// address that no longer exists is just skipped.
+// Favorite/freeze records are keyed by each stat/item's RAM address, not its array position, so
+// reordering, adding or removing table rows can never apply saved flags to the wrong row. Records
+// for addresses that no longer exist are simply skipped.
 void load_cheat_state() {
     FILE* f = fopen(app_path("resources/data/gigapets_cheat_state.dat").c_str(), "rb");
     if (!f) return;
@@ -112,6 +106,8 @@ void set_stat_value(int stat_idx, int32_t val) {
     if (val > CHEAT_STATS[stat_idx].max_val) val = CHEAT_STATS[stat_idx].max_val;
     ram[CHEAT_STATS[stat_idx].addr] = (uint16_t)val;
     if (CHEAT_STATS[stat_idx].addr == MONEY_STAT_ADDR) {
+        // Real purchases save money immediately through the ROM's own routine; do the same so a
+        // Mod Menu edit survives closing the game (see docs/ROM_NOTES.md, "Saving").
         call_rom_function(ROM_SAVE_MONEY_TO_SLOT, { 0, ram[CURRENT_SAVE_SLOT_ADDR] });
     }
     if (g_stat_frozen[stat_idx]) {
@@ -136,34 +132,18 @@ bool inv_item_capped_at_one(int item_idx) {
     return false;
 }
 
-// Same as set_stat_value, for a flat inventory item index. No general
-// per-item min/max is known from the CT table, so this clamps to the full
-// uint16_t range like the "uncapped" stats, except the one-per-item
-// categories above.
+// Same as set_stat_value, for an inventory item index. There is no general per-item maximum, so
+// this clamps to the full uint16_t range, except for the one-of-a-kind categories above.
 void set_inv_value(int item_idx, int32_t new_val) {
     int32_t max_val = inv_item_capped_at_one(item_idx) ? 1 : 65535;
     if (new_val < 0) new_val = 0;
     if (new_val > max_val) new_val = max_val;
     ram[INVENTORY_ITEMS[item_idx].addr] = (uint16_t)new_val;
-    // Same fix as set_stat_value's money case, for items: the real
-    // in-game item-gain path (Item_IncrementOwnedAndSave, ROM 0x02da4e,
-    // ground-truthed live via a real MAME purchase) calls
-    // SaveItemFieldToSlot(0x02e5c0) immediately after updating the
-    // quantity. Args pushed in the real caller's order: itemIdx first/
-    // deep, field(=0) middle, slot last/close (verified via the
-    // function's own prologue: bp+7 = slot).
-    //
-    // itemIdx here is NOT our own INVENTORY_ITEMS array position - found
-    // via a same-session save+immediately-reload round-trip test that it
-    // always came back 0 regardless of item. SaveItemFieldToSlot computes
-    // the item's own RAM address internally as 0xC51+itemIdx (confirmed in
-    // its disassembly), so the ROM's real item-ID numbering IS "address
-    // minus 0xC51" directly - but INVENTORY_ITEMS is ordered by category
-    // (potions, figurines, etc.), not by that same address order, so our
-    // array position and the ROM's real ID only coincidentally matched for
-    // early entries. Deriving the real ID from the address itself (which
-    // is independently known-correct - it's what every existing read/
-    // write already uses) fixes it for every item, not just this one.
+    // Persist like the ROM does after a real item gain (Item_IncrementOwnedAndSave ->
+    // SaveItemFieldToSlot(itemIdx, field = 0, slot), args pushed in the real caller's order).
+    // itemIdx is the ROM's item id, i.e. the item's RAM address minus ITEM_QUANTITY_BASE_ADDR -
+    // NOT our INVENTORY_ITEMS array position, since the array is grouped by category.
+    // See docs/ROM_NOTES.md, "Saving".
     call_rom_function(ROM_SAVE_ITEM_FIELD_TO_SLOT, { (uint16_t)(INVENTORY_ITEMS[item_idx].addr - ITEM_QUANTITY_BASE_ADDR), 0, ram[CURRENT_SAVE_SLOT_ADDR] });
     if (g_inv_frozen[item_idx]) {
         g_inv_frozen_value[item_idx] = (uint16_t)new_val;

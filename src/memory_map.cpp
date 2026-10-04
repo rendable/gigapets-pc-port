@@ -29,15 +29,9 @@ uint16_t memory_read16(uint32_t addr) {
                 for (int b = 0; b < GAME_BUTTON_COUNT; b++) {
                     if (IsKeyDown(g_key_binding[b])) low |= (1 << b);
                 }
-                // Native controller support: gamepad 0's D-pad and left
-                // stick both drive movement (whichever the player uses),
-                // face/start buttons map to Select/Back/Menu via each
-                // platform's own "confirm/cancel/start" convention - raylib
-                // normalizes Xbox-style (A/B/Start) and PlayStation-style
-                // (Cross/Circle/Start) pads to the same enum values, so this
-                // covers both without per-platform cases. Remappable via
-                // g_gamepad_binding (Controls menu, Gamepad column),
-                // persisted the same way as the keyboard bindings above.
+                // Gamepad 0: the D-pad and left stick both drive movement, and the face/start buttons
+                // are bound through g_gamepad_binding (remappable in the Controls menu). raylib
+                // normalizes Xbox- and PlayStation-style pads to the same button enum.
                 if (IsGamepadAvailable(0)) {
                     const float deadzone = 0.35f;
                     float ax = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X);
@@ -131,24 +125,11 @@ void memory_write16(uint32_t addr, uint16_t data) {
             eeprom_di_write((data & 0x0004) != 0);
         }
 
-        // REG_SYSTEM_CTRL (0x3D20) bit15 / REG_WATCHDOG_CLEAR (0x3D24),
-        // ported from spg2xx_io_device's real watchdog: bit15 arms a
-        // 750ms countdown (750ms @ 60fps = 45 frames, matching this
-        // port's own SIM_DT granularity), writing 0x55AA to the clear
-        // register while armed reloads it, and letting it expire
-        // unfed asserts then clears INPUT_LINE_RESET - a genuine CPU
-        // reset. Ground-truthed live via a MAME watchpoint: real
-        // hardware's Quit flow arms the watchdog and deliberately stops
-        // feeding it, so after 750ms idle the CPU resets itself clean
-        // (landing at ResetVector, ROM 0x00fa72, which restores default
-        // RAM including GameState=0 and returns to the main menu) -
-        // this port never implemented these two registers at all, so
-        // the countdown never started and that reset never happened,
-        // which is the actual root cause of the Quit-freeze investigated
-        // during development. watchdog_enabled/watchdog_frames_left already
-        // existed as dead scaffolding for exactly this (decrement-and-
-        // reset logic already implemented in the main loop) - just never
-        // wired to a real trigger before now.
+        // Watchdog, ported from spg2xx_io_device: bit 15 of REG_SYSTEM_CTRL arms a 750 ms countdown
+        // (45 ticks at 60 fps), writing 0x55AA to REG_WATCHDOG_CLEAR while armed reloads it, and
+        // letting it expire resets the CPU. The game's Quit flow relies on this: it arms the
+        // watchdog and stops feeding it so the machine reboots to the main menu. Without it Quit
+        // froze the screen. See watchdog_tick() and docs/ROM_NOTES.md, "Watchdog and Quit".
         if (addr == REG_SYSTEM_CTRL) {
             bool want_enabled = (data & 0x8000) != 0;
             if (want_enabled && !watchdog_enabled) { watchdog_enabled = true; watchdog_frames_left = 45; }
@@ -158,19 +139,11 @@ void memory_write16(uint32_t addr, uint16_t data) {
             watchdog_frames_left = 45;
         }
 
-        // System DMA (ported from spg2xx_sysdma_device::do_cpu_dma, mame/src/
-        // devices/machine/spg2xx_sysdma.cpp): writing the word count (+ control
-        // bits in the top 2 bits) to 0x3E02 copies `len` words from a 22-bit
-        // source address (0x3E00 low / 0x3E01 high 6 bits) to a 14-bit
-        // destination window (0x3E03). Real hardware clears 0x3E02 AND advances
-        // the source/dest registers past the copied region when the transfer
-        // completes - a ROM doing several chained transfers (advancing src/dst
-        // itself between calls, or relying on this auto-advance) would silently
-        // re-read/re-write the same stale addresses every time without this,
-        // corrupting whatever data those chained transfers were assembling
-        // (plausible cause of the new-game spawn/stats corruption). The clear
-        // alone was also needed already, since the ROM's wait-for-DMA-complete
-        // poll loop spins forever on a 0x3E02 value that never resets.
+        // System DMA, ported from spg2xx_sysdma_device::do_cpu_dma: writing the word count (control
+        // bits in the top 2) to SYSDMA_LENGTH copies that many words from a 22-bit source
+        // (SYSDMA_SRC_LO/HI) to a 14-bit destination (SYSDMA_DST). On completion the hardware
+        // clears the length register (the ROM polls it) AND advances source/destination past the
+        // copied region, which chained transfers rely on.
         if (addr == SYSDMA_LENGTH) {
             uint32_t src = ((io[SYSDMA_SRC_HI - IO_REGS_BASE] & 0x3f) << 16) | io[SYSDMA_SRC_LO - IO_REGS_BASE];
             uint32_t dst = io[SYSDMA_DST - IO_REGS_BASE] & 0x3fff;
