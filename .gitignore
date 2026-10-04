@@ -1,0 +1,16 @@
+build*/
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.log
+
+# BYO-ROM: never commit the copyrighted ROM
+rom.u7
+
+# Runtime-generated saves/settings
+resources/data/*.eep
+resources/data/*.eep.tmp
+resources/data/*.dat
+extracted_sprites/
+sprite_capture/
