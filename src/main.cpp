@@ -373,6 +373,7 @@ void call_rom_function(uint32_t target_full_addr, const std::vector<uint16_t>& a
     cpu_ptr->set_r(unsp_12_device::REG_PC, orig_pc);
     cpu_ptr->set_r(unsp_12_device::REG_SR, orig_sr);
 }
+static const char* APP_VERSION = "0.1.0";
 // Hand-declared instead of #include <windows.h> to avoid its Rectangle/
 // CloseWindow/DrawText/PlaySound clashes with raylib. user32.lib is already
 // linked (CMakeLists.txt); kernel32.lib is linked implicitly by default.
@@ -3547,6 +3548,18 @@ int main() {
             "GigaPets PC Port", 0x10 /* MB_ICONERROR */);
         return 1;
     }
+    fseek(rom_f, 0, SEEK_END);
+    long rom_size = ftell(rom_f);
+    fseek(rom_f, 0, SEEK_SET);
+    if (rom_size != 2L * 0x400000) {
+        fclose(rom_f);
+        char msg[256];
+        snprintf(msg, sizeof(msg),
+            "This doesn't look like the right ROM file.\n\nrom.u7 is %ld bytes, but the Giga Pets Explorer ROM should be exactly %ld bytes (8 MB).\n\nMake sure you copied the full, unmodified ROM dump.",
+            rom_size, 2L * 0x400000);
+        MessageBoxA(nullptr, msg, "GigaPets PC Port", 0x10 /* MB_ICONERROR */);
+        return 1;
+    }
     fread(rom, 2, 0x400000, rom_f);
     fclose(rom_f);
 
@@ -3576,7 +3589,11 @@ int main() {
     cpu.device_reset();
 
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
-    InitWindow((int)(WIDE_W * DEFAULT_WINDOW_SCALE), (int)(NATIVE_H * DEFAULT_WINDOW_SCALE), "GigaPets PC Port");
+    InitWindow((int)(WIDE_W * DEFAULT_WINDOW_SCALE), (int)(NATIVE_H * DEFAULT_WINDOW_SCALE), TextFormat("GigaPets PC Port v%s", APP_VERSION));
+    // Raylib's default exit key is Escape, which would quit the game whenever
+    // the player hits Esc to cancel a Mod Menu edit. The window's X button
+    // and the in-game Quit still close it normally.
+    SetExitKey(KEY_NULL);
     SetTargetFPS(FPS_LIMIT_OPTIONS[g_fps_limit_idx]);
 
     // No font is bundled - try common Windows system fonts first, in order
@@ -4410,6 +4427,7 @@ int main() {
         // so re-toggling begins a fresh session instead of silently
         // skipping objects already seen in a previous capture.
         static std::set<std::string> live_capture_exported;
+        if (IsKeyPressed(KEY_F11)) ToggleFullscreen();
         if (IsKeyPressed(KEY_F7)) {
             g_live_sprite_capture = !g_live_sprite_capture;
             if (g_live_sprite_capture) {
