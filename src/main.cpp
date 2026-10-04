@@ -3621,9 +3621,16 @@ void selftest_apply_script(long frame) {
     case 1000:
         g_show_stat_hud = true;
         adjust_row(ROW_QUEST_ARROW, 1);
-        for (int i = 0; i < CHEAT_STAT_COUNT; i++)
-            set_stat_value(i, CHEAT_STATS[i].min_val + (CHEAT_STATS[i].max_val - CHEAT_STATS[i].min_val) / 3);
+        // Even rows get pushed past their max, odd rows below their min, so
+        // the clamping in set_stat_value is exercised at both ends.
+        for (int i = 0; i < CHEAT_STAT_COUNT; i++) {
+            if (i % 3 == 0) set_stat_value(i, CHEAT_STATS[i].max_val + 1000);
+            else if (i % 3 == 1) set_stat_value(i, CHEAT_STATS[i].min_val - 1000);
+            else set_stat_value(i, CHEAT_STATS[i].min_val + (CHEAT_STATS[i].max_val - CHEAT_STATS[i].min_val) / 3);
+        }
         adjust_row(ROW_INVENTORY_ITEM_START + 0, 5);
+        set_inv_value(1, 100000);
+        set_inv_value(2, -50);
         toggle_freeze_row(ROW_STATS_START + 1);
         toggle_favorite_row(ROW_STATS_START + 2);
         break;
