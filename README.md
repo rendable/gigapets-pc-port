@@ -39,11 +39,12 @@ Prefer to build it yourself? See [Building from source](#building-from-source) b
 | F9 | Jump to the hidden hardware debug/test menu |
 | F11 | Expand the window to the largest whole-number size that fits your screen (press again to restore) |
 
-Gamepads are supported; bind buttons in the Mod Menu.
+These are the defaults. Every button can be changed, on keyboard and on gamepad, from the **Controls** section of the Mod Menu (see below).
 
 ## Features
 
-- **Mod Menu (Tab):** edit any stat, freeze values, give items and money, pin favorites.
+- **Full keyboard and gamepad rebinding:** remap every game button, and the Mod Menu key itself, for both keyboard and gamepad from the Controls section of the Mod Menu (click a binding or press Enter on it, then press the new key or button). Bindings are saved automatically. Tab always works as a fallback to open the Mod Menu, so a bad rebind can't lock you out.
+- **Mod Menu (Tab):** edit any stat, freeze values, give items and money, pin favorites. Fully usable with the keyboard, mouse or a gamepad.
 - **Custom mods:** add your own row by RAM address to track or edit anything.
 - **Minipets:** spawn and despawn any of the 8 species from the Mod Menu.
 - **Rendering filters:** Crisp, Smooth, Sharp, or CRT shader.
