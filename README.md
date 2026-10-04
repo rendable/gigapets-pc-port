@@ -83,6 +83,13 @@ The exe is self-contained (the C++ runtime is linked in), so you can copy the wh
 - *`cmake` not found*: install CMake and reopen your terminal so the PATH updates.
 - *raylib download fails*: check your internet connection and re-run the configure step.
 
+## Documentation and contributing
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the emulator, Mod Menu and hooks fit together.
+- [docs/ROM_NOTES.md](docs/ROM_NOTES.md): findings about the ROM and why the port works the way it does.
+- [docs/rom_functions.csv](docs/rom_functions.csv) and [docs/rom_ram_globals.csv](docs/rom_ram_globals.csv): the reverse-engineered ROM function and RAM variable names (word addresses).
+- [CONTRIBUTING.md](CONTRIBUTING.md): code style, how to add stats/items/mods/hooks, and the regression check.
+
 ## Credits and license
 
 - CPU core and SPG2xx hardware emulation are derived from [MAME](https://github.com/mamedev/mame) (SunPlus unSP core by Segher Boessenkool, Ryan Holtz and David Haywood; SPG2xx audio/video/IO by Ryan Holtz, Jonathan Gevaryahu and contributors; IMA ADPCM by Andrew Gardner and Aaron Giles).
